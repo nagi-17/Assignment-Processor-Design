@@ -36,9 +36,10 @@ These are all related/(maybe)required at system/kernel level
 
 ### Registers (32-bit): 
 - `r0-r3` : general purpose int registers
-- `r4-r8` : scratch registers
-- `r9-r12` : general purpose float registers
-- `r13` : zero register
+- `r4-r7` : scratch registers
+- `r8-r11` : general purpose float registers
+- `r12` : zero register
+- `r13` : frame pointer (it points to the top of the activation block)
 - `r14` : stack pointer
 - `r15` : return address
 
