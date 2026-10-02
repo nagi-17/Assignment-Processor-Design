@@ -5,12 +5,17 @@
 #include <unordered_map>
 
 enum class InstFormat {
-    R_TYPE,
-    I_TYPE,
+    R_TYPE_3,
+    R_TYPE_2,
+    R_TYPE_1,
+    I_TYPE_3,
+    I_TYPE_2,
+    I_TYPE_1,
+    I_TYPE_CSRW,
     F_TYPE,
-    SYS_TYPE // for zero-operand inst.
+    SYS_TYPE
     /* so basically whenever the assembler encounters any inst. with inst. format as SYS_TYPE,
-    it will just fecth for the opcode for the inst. and set all other inst. bits to 0 */
+    it will just fetch for the opcode for the inst. and set all other inst. bits to 0 */
 };
 
 const std::unordered_map<std::string, std::string> OPCODE_MAP = {
@@ -72,16 +77,32 @@ const std::unordered_map<std::string, std::string> REG_MAP = {
 };
 
 const std::unordered_map<std::string, InstFormat> INST_FORMAT_MAP = {
-    {"fadd", InstFormat::R_TYPE},
-    {"fsub", InstFormat::R_TYPE},
-    {"fmul", InstFormat::R_TYPE},
-    {"fdiv", InstFormat::R_TYPE},
-    {"fcmp", InstFormat::R_TYPE},
+    {"fadd", InstFormat::R_TYPE_3},
+    {"fsub", InstFormat::R_TYPE_3},
+    {"fmul", InstFormat::R_TYPE_3},
+    {"fdiv", InstFormat::R_TYPE_3},
+    {"fcmp", InstFormat::R_TYPE_2},
 
     {"fmov", InstFormat::F_TYPE},
 
-    {"ld", InstFormat::R_TYPE},
-    {"st", InstFormat::R_TYPE},
+    {"ld", InstFormat::I_TYPE_3},
+    {"st", InstFormat::I_TYPE_3},
+
+    {"movu", InstFormat::I_TYPE_2},
+    {"movh", InstFormat::I_TYPE_2},
+
+    {"csrr", InstFormat::I_TYPE_2},
+    {"csrw", InstFormat::I_TYPE_CSRW},
+
+    {"chk", InstFormat::R_TYPE_2},
+    {"clrz", InstFormat::R_TYPE_1},
+
+    {"b", InstFormat::I_TYPE_1},
+    {"beq", InstFormat::I_TYPE_1},
+    {"bne", InstFormat::I_TYPE_1},
+    {"bgt", InstFormat::I_TYPE_1},
+    {"blt", InstFormat::I_TYPE_1},
+    {"call", InstFormat::I_TYPE_1},
 
     {"nop",    InstFormat::SYS_TYPE},
     {"ret",    InstFormat::SYS_TYPE},
@@ -90,6 +111,6 @@ const std::unordered_map<std::string, InstFormat> INST_FORMAT_MAP = {
     {"ebreak", InstFormat::SYS_TYPE},
     {"wfi",    InstFormat::SYS_TYPE}
 };
-// Inst. which allow multiple inst. format are not included in FORMAT_MAP, as they will be handled dynamically
+// Inst. which allow multiple inst. format are not included in INST_FORMAT_MAP, as they will be handled dynamically
 
 #endif
