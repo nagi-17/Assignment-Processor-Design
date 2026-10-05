@@ -36,4 +36,12 @@ public:
             }
         }
     }
+
+    std::unordered_map<std::string, uint32_t> get_symbol_table() const {
+        return symbol_table;
+    }
+
+    std::vector<std::string> get_pure_instructions() const {
+        return pure_instructions;
+    }
 };
