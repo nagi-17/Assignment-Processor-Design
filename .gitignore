@@ -1,0 +1,33 @@
+# Compiled Object files
+*.o
+*.obj
+
+# Executables
+*.out
+*.exe
+assembler
+disassembler
+simulator
+
+# Custom Project Outputs
+*.bin
+
+# Build Directories
+build/
+bin/
+obj/
+
+# Core dumps
+core
+core.*
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
