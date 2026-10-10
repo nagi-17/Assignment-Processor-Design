@@ -111,8 +111,9 @@ private:
         // mod - I-format (000101)
         ControlWord modICw;
         enableSignal(modCw, Signal::IS_MOD);
-        enableSignal(modCw, Signal::IS_WB);
-        controlStore["0001011"] = modCw;
+        enableSignal(modICw, Signal::IS_WB);
+        enableSignal(modICw, Signal::IS_IMMEDIATE);
+        controlStore["0001011"] = modICw;
 
         // lsl - R-format (000110)
         ControlWord lslCw;
