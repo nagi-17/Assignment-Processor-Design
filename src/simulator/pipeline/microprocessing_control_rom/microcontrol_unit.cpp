@@ -164,17 +164,29 @@ private:
         enableSignal(orICw, Signal::IS_IMMEDIATE);
         controlStore["0010011"] = orICw;
 
-        // and - R-format (001010)
+        // and - R-format (001000)
         ControlWord andCw;
         enableSignal(andCw, Signal::IS_AND);
         enableSignal(andCw, Signal::IS_WB);
-        controlStore["0010100"] = andCw;
+        controlStore["0010000"] = andCw;
         // and - I-format (001010)
         ControlWord andICw;
         enableSignal(andICw, Signal::IS_AND);
         enableSignal(andICw, Signal::IS_WB);
         enableSignal(andICw, Signal::IS_IMMEDIATE);
-        controlStore["0010101"] = andICw;
+        controlStore["0010001"] = andICw;
+
+        // xor - R-format (001010)
+        ControlWord xorCw;
+        enableSignal(xorCw, Signal::IS_XOR);
+        enableSignal(xorCw, Signal::IS_WB);
+        controlStore["0010100"] = xorCw;
+        // xor - I-format(001010)
+        ControlWord xorICw;
+        enableSignal(xorICw, Signal::IS_XOR);
+        enableSignal(xorICw, Signal::IS_WB);
+        enableSignal(xorICw, Signal::IS_IMMEDIATE);
+        controlStore["0010101"] = xorICw;
 
         // not - R-format (001011)
         ControlWord notCw;
@@ -342,34 +354,33 @@ private:
         // wfi - R-format (111111)
         ControlWord wfiCw;
         enableSignal(wfiCw, Signal::IS_WFI);
-        enableSignal(wfiCw, Signal::IS_STALL);
         controlStore["1111110"] = wfiCw;
     }
 
-public:
-    MicroprogrammedControlUnit() {
-        initializeControlStore();
-    }
-
-    // Allows dynamic modifications to the stored microprogram memory (Flexibility Feature)
-    void updateMicrocode(const std::string& opcode, const ControlWord& newWord) {
-        controlStore[opcode] = newWord;
-    }
-
-    // Decodes 32-bit binary instruction string into corresponding control bitset
-    bool decodeInstruction(const std::string& instruction, ControlWord& outWord) const {
-        if (instruction.length() < 7) {
-            return false;
+    public:
+        MicroprogrammedControlUnit() {
+            initializeControlStore();
         }
 
-        std::string opcode = instruction.substr(0, 7);
-        auto it = controlStore.find(opcode);
-        if (it != controlStore.end()) {
-            outWord = it->second;
-            return true;
+        // Allows dynamic modifications to the stored microprogram memory (Flexibility Feature)
+        void updateMicrocode(const std::string& opcode, const ControlWord& newWord) {
+            controlStore[opcode] = newWord;
         }
-        return false; // Illegal Opcode
-    }
+
+        // Decodes 32-bit binary instruction string into corresponding control bitset
+        bool decodeInstruction(const std::string& instruction, ControlWord& outWord) const {
+            if (instruction.length() < 7) {
+                return false;
+            }
+
+            std::string opcode = instruction.substr(0, 7);
+            auto it = controlStore.find(opcode);
+            if (it != controlStore.end()) {
+                outWord = it->second;
+                return true;
+            }
+            return false; // Illegal Opcode
+        }
 };
 
 // int main() {

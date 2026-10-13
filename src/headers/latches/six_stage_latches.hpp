@@ -1,5 +1,5 @@
-#ifndef PIPELINE_LATCHES_HPP
-#define PIPELINE_LATCHES_HPP
+#ifndef SIX_STAGE_PIPELINE_LATCHES_HPP
+#define SIX_STAGE_PIPELINE_LATCHES_HPP
 
 #include <cstdint>
 #include <iostream>
@@ -91,7 +91,7 @@ class ID_EX_Latch
         {
             std::cout << "[ID/EX Latch] "
                     << "Valid: " << is_valid
-                    << " | RD: r" << static_cast<int>(rd & 0x0F) // Masked to 4 bits
+                    << " | rd: r" << static_cast<int>(rd & 0x0F) // Masked to 4 bits
                     << " | OP1: 0x" << std::hex << std::setw(8) << std::setfill('0') << op1
                     << " | OP2: 0x" << std::setw(8) << op2
                     << " | IMMX: 0x" << std::setw(8) << immx
@@ -103,10 +103,12 @@ class EX_MA1_Latch
 {
     public:
         uint32_t exResult{0}; // ALU/FPU computed result or memory target address
+        uint32_t pc_next{0};  // PC + 4 for function calls and traps
         bool is_Ld{false};    // Memory Load control signal
         bool is_St{false};    // Memory Store control signal
         bool is_Wb{false};    // Register Writeback enable
         bool is_Clear{false}; // Security/Utility register clear signal
+        bool is_Call{false};  // Added for WB unit
         uint8_t rd{0};        // Destination register address (4 bits)
         bool is_valid{false}; // Bubble flag
         uint32_t st_data{0};  // Direct op2 value for store operation
@@ -120,10 +122,12 @@ class EX_MA1_Latch
         void reset()
         {
             exResult = 0;
+            pc_next = 0;
             is_Ld = false;
             is_St = false;
             is_Wb = false;
             is_Clear = false;
+            is_Call = false;
             rd = 0;
             is_valid = false;
             st_data = 0;
@@ -142,11 +146,12 @@ class EX_MA1_Latch
         {
             std::cout << "[EX/MA1 Latch] "
                     << "Valid: " << is_valid
-                    << " | RD: r" << static_cast<int>(rd & 0x0F)
+                    << " | rd: r" << static_cast<int>(rd & 0x0F)
                     << " | exResult: 0x" << std::hex << std::setw(8) << std::setfill('0') << exResult
+                    << " | PC_Next: 0x" << std::setw(8) << pc_next
                     << " | st_data: 0x" << std::setw(8) << st_data
                     << std::dec
-                    << " | Ld:" << is_Ld << " St:" << is_St << " Wb:" << is_Wb << " Clear:" << is_Clear
+                    << " | Ld:" << is_Ld << " St:" << is_St << " Wb:" << is_Wb  << " Call:" << is_Call << " Clear:" << is_Clear
                     << " | Traps [Ecall:" << is_Ecall << " Ebreak:" << is_Ebreak
                     << " Eret:" << is_Eret << " Wfi:" << is_Wfi << "]\n";
         }
@@ -156,10 +161,12 @@ class MA1_MA2_Latch
 {
     public:
         uint32_t exResult{0}; // ALU/FPU result or memory address
+        uint32_t pc_next{0};  // PC + 4 for function calls and traps
         bool is_St{false};    // Memory Store control signal
         bool is_Ld{false};    // Memory Load control signal
         bool is_Wb{false};    // Register Writeback enable
         bool is_Clear{false}; // Register clear signal
+        bool is_Call{false};  // Added for WB unit
         uint8_t rd{0};        // Destination register address (4 bits)
         bool is_valid{false}; // Bubble flag
         uint32_t st_data{0};  // Direct op2 data value for store
@@ -176,10 +183,12 @@ class MA1_MA2_Latch
         void reset()
         {
             exResult = 0;
+            pc_next = 0;
             is_St = false;
             is_Ld = false;
             is_Wb = false;
             is_Clear = false;
+            is_Call = false;
             rd = 0;
             is_valid = false;
             st_data = 0;
@@ -199,11 +208,12 @@ class MA1_MA2_Latch
         {
             std::cout << "[MA1/MA2 Latch] "
                     << "Valid: " << is_valid
-                    << " | RD: r" << static_cast<int>(rd & 0x0F)
+                    << " | rd: r" << static_cast<int>(rd & 0x0F)
                     << " | exResult: 0x" << std::hex << std::setw(8) << std::setfill('0') << exResult
+                    << " | PC_Next: 0x" << std::setw(8) << pc_next
                     << " | st_data: 0x" << std::setw(8) << st_data
                     << std::dec
-                    << " | Ld:" << is_Ld << " St:" << is_St << " Wb:" << is_Wb
+                    << " | Ld:" << is_Ld << " St:" << is_St << " Wb:" << is_Wb << " Call:" << is_Call << " Clear:" << is_Clear
                     << " | StackFault:" << stack_fault
                     << " | Traps [Ecall:" << is_Ecall << " Ebreak:" << is_Ebreak
                     << " Eret:" << is_Eret << " Wfi:" << is_Wfi << "]\n";
@@ -214,9 +224,11 @@ class MA2_WB_Latch
 {
     public:
         uint32_t exResult{0};  // Computed ALU/FPU result or link address
+        uint32_t pc_next{0};  // PC + 4 for function calls and traps
         bool is_Ld{false};     // Control signal for MUX selection in WB
         bool is_Wb{false};     // Register Writeback enable
         bool is_Clear{false};  // Register clear signal
+        bool is_Call{false};  // Added for WB unit
         uint8_t rd{0};         // Destination register address (4 bits)
         bool is_valid{false};  // Validity flag for commit/debug checking
         uint32_t read_data{0}; // Data memory read result
@@ -224,9 +236,11 @@ class MA2_WB_Latch
         void reset()
         {
             exResult = 0;
+            pc_next = 0;
             is_Ld = false;
             is_Wb = false;
             is_Clear = false;
+            is_Call = false;
             rd = 0;
             is_valid = false;
             read_data = 0;
@@ -241,11 +255,12 @@ class MA2_WB_Latch
         {
             std::cout << "[MA2/WB Latch] "
                     << "Valid: " << is_valid
-                    << " | RD: r" << static_cast<int>(rd & 0x0F)
+                    << " | rd: r" << static_cast<int>(rd & 0x0F)
                     << " | exResult: 0x" << std::hex << std::setw(8) << std::setfill('0') << exResult
+                    << " | PC_Next: 0x" << std::setw(8) << pc_next
                     << " | read_data: 0x" << std::setw(8) << read_data
                     << std::dec
-                    << " | Ld:" << is_Ld << " Wb:" << is_Wb << " Clear:" << is_Clear << "\n";
+                    << " | Ld:" << is_Ld << " Wb:" << is_Wb  << " Call:" << is_Call << " Clear:" << is_Clear<< "\n";
         }
 };
 
