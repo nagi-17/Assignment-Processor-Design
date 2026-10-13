@@ -9,11 +9,11 @@ enum class Signal {
     // Basic Control, Branch & Memory (0 - 10)
     IS_ST = 0, IS_LD, IS_BEQ, IS_BGT, IS_BLT, IS_BNE, IS_RET, IS_IMMEDIATE, IS_WB, IS_UBRANCH, IS_CALL,
 
-    // Integer ALU Signals (11 - 22)
-    IS_ADD, IS_SUB, IS_CMP, IS_MUL, IS_DIV, IS_MOD, IS_LSL, IS_LSR, IS_ASR, IS_OR, IS_AND, IS_NOT,
+    // Integer ALU Signals (11 - 23)
+    IS_ADD, IS_SUB, IS_CMP, IS_MUL, IS_DIV, IS_MOD, IS_LSL, IS_LSR, IS_ASR, IS_OR, IS_AND, IS_NOT, IS_XOR,
 
-    // Extended System & Special Signals (23 - 29)
-    IS_WFI, IS_STALL, IS_ERET, IS_CSRR, IS_CSRW, IS_SYSCALL, IS_EBREAK,
+    // Extended System & Special Signals (24 - 29)
+    IS_WFI, IS_ERET, IS_CSRR, IS_CSRW, IS_SYSCALL, IS_EBREAK,
 
     // Floating-Point Unit (FPU) Signals (30 - 35)
     IS_FLOAT, IS_FADD, IS_FSUB, IS_FMUL, IS_FDIV, IS_FCMP,
@@ -60,4 +60,4 @@ struct ControlSignals {
     }
 };
 
-#endif // CONTROL_SIGNALS_HPP
+#endif
