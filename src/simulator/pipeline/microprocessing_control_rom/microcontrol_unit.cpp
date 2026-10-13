@@ -4,36 +4,37 @@
 #include <bitset>
 #include <vector>
 #include <iomanip>
+#include "control_signals.hpp"
 
-// Enum mapping each control signal to a bit index in the microprogram memory
-enum class Signal {
-    // Basic Control, Branch & Memory (0 - 10)
-    IS_ST = 0, IS_LD, IS_BEQ, IS_BGT, IS_BLT, IS_BNE, IS_RET, IS_IMMEDIATE, IS_WB, IS_UBRANCH, IS_CALL,
+// // Enum mapping each control signal to a bit index in the microprogram memory
+// enum class Signal {
+//     // Basic Control, Branch & Memory (0 - 10)
+//     IS_ST = 0, IS_LD, IS_BEQ, IS_BGT, IS_BLT, IS_BNE, IS_RET, IS_IMMEDIATE, IS_WB, IS_UBRANCH, IS_CALL,
 
-    // Integer ALU Signals (11 - 22)
-    // IS_MOV control signal is not required, as it is implemented using preprocessing.
-    IS_ADD, IS_SUB, IS_CMP, IS_MUL, IS_DIV, IS_MOD, IS_LSL, IS_LSR, IS_ASR, IS_OR, IS_AND, IS_NOT,
+//     // Integer ALU Signals (11 - 22)
+//     // IS_MOV control signal is not required, as it is implemented using preprocessing.
+//     IS_ADD, IS_SUB, IS_CMP, IS_MUL, IS_DIV, IS_MOD, IS_LSL, IS_LSR, IS_ASR, IS_OR, IS_AND, IS_NOT,
 
-    // Extended System & Special Signals (23 - 29)
-    IS_WFI, IS_STALL, IS_ERET, IS_CSRR, IS_CSRW, IS_SYSCALL, IS_EBREAK,
+//     // Extended System & Special Signals (23 - 29)
+//     IS_WFI, IS_STALL, IS_ERET, IS_CSRR, IS_CSRW, IS_SYSCALL, IS_EBREAK,
 
-    // Floating-Point Unit (FPU) Signals (30 - 35)
-    IS_FLOAT, IS_FADD, IS_FSUB, IS_FMUL, IS_FDIV, IS_FCMP,
+//     // Floating-Point Unit (FPU) Signals (30 - 35)
+//     IS_FLOAT, IS_FADD, IS_FSUB, IS_FMUL, IS_FDIV, IS_FCMP,
 
-    // Secure/Utility Signal (36)
-    IS_CLEAR,
+//     // Secure/Utility Signal (36)
+//     IS_CLEAR,
 
-    // Total Count Sentinel
-    COUNT
-};
+//     // Total Count Sentinel
+//     COUNT
+// };
 
-constexpr size_t CONTROL_WORD_WIDTH = static_cast<size_t>(Signal::COUNT);
-using ControlWord = std::bitset<CONTROL_WORD_WIDTH>;
+// constexpr size_t CONTROL_WORD_WIDTH = static_cast<size_t>(Signal::COUNT);
+// using ControlWord = std::bitset<CONTROL_WORD_WIDTH>;
 
-// Helper to set individual bits cleanly
-inline void enableSignal(ControlWord& cw, Signal sig) {
-    cw.set(static_cast<size_t>(sig));
-}
+// // Helper to set individual bits cleanly
+// inline void enableSignal(ControlWord& cw, Signal sig) {
+//     cw.set(static_cast<size_t>(sig));
+// }
 
 class MicroprogrammedControlUnit {
 private:
@@ -110,7 +111,7 @@ private:
         controlStore["0001010"] = modCw;
         // mod - I-format (000101)
         ControlWord modICw;
-        enableSignal(modCw, Signal::IS_MOD);
+        enableSignal(modICw, Signal::IS_MOD);
         enableSignal(modICw, Signal::IS_WB);
         enableSignal(modICw, Signal::IS_IMMEDIATE);
         controlStore["0001011"] = modICw;
@@ -124,6 +125,7 @@ private:
         ControlWord lslICw;
         enableSignal(lslICw, Signal::IS_LSL);
         enableSignal(lslICw, Signal::IS_WB);
+        enableSignal(lslICw, Signal::IS_IMMEDIATE);
         controlStore["0001101"] = lslICw;
 
         // lsr - R-format (000111)
@@ -370,39 +372,39 @@ public:
     }
 };
 
-int main() {
-    MicroprogrammedControlUnit mcu;
+// int main() {
+//     MicroprogrammedControlUnit mcu;
 
-    // Test cases covering distinct instruction families
-    std::vector<std::pair<std::string, std::string>> testInstructions = {
-        {"add",    "00000000001000100001100000000000"}, // ALU: Add
-        {"fsub",   "01001000001000100001100000000000"}, // FPU: Floating Subtraction
-        {"st",     "10000100001000100000000000000100"}, // Memory: Store
-        {"beq",    "11000100000000000000000000001000"}, // Branch: Branch if Equal
-        {"clrz",   "10110100001000000000000000000000"}, // System: Clear Zero
-        {"ebreak", "11111000000000000000000000000000"}  // System Trap: Debug Break
-    };
+//     // Test cases covering distinct instruction families
+//     std::vector<std::pair<std::string, std::string>> testInstructions = {
+//         {"add",    "00000000001000100001100000000000"}, // ALU: Add
+//         {"fsub",   "01001000001000100001100000000000"}, // FPU: Floating Subtraction
+//         {"st",     "10000100001000100000000000000100"}, // Memory: Store
+//         {"beq",    "11000100000000000000000000001000"}, // Branch: Branch if Equal
+//         {"clrz",   "10110100001000000000000000000000"}, // System: Clear Zero
+//         {"ebreak", "11111000000000000000000000000000"}  // System Trap: Debug Break
+//     };
 
-    std::cout << "Control Word Vector Length: " << CONTROL_WORD_WIDTH << " bits\n\n";
-    std::cout << std::left << std::setw(12) << "Instruction" 
-              << std::setw(10) << "Opcode" 
-              << "Control Vector Bitset (36 bits)" << std::endl;
-    std::cout << "----------------------------------------------------------------------" << std::endl;
+//     std::cout << "Control Word Vector Length: " << CONTROL_WORD_WIDTH << " bits\n\n";
+//     std::cout << std::left << std::setw(12) << "Instruction" 
+//               << std::setw(10) << "Opcode" 
+//               << "Control Vector Bitset (37 bits)" << std::endl;
+//     std::cout << "----------------------------------------------------------------------" << std::endl;
 
-    for (const auto& test : testInstructions) {
-        ControlWord cw;
-        bool status = mcu.decodeInstruction(test.second, cw);
+//     for (const auto& test : testInstructions) {
+//         ControlWord cw;
+//         bool status = mcu.decodeInstruction(test.second, cw);
 
-        if (status) {
-            std::cout << std::left << std::setw(12) << test.first 
-                      << std::setw(10) << test.second.substr(0, 6) 
-                      << cw.to_string() << std::endl;
-        } else {
-            std::cout << std::left << std::setw(12) << test.first 
-                      << std::setw(10) << test.second.substr(0, 6) 
-                      << "UNKNOWN OPCODE" << std::endl;
-        }
-    }
+//         if (status) {
+//             std::cout << std::left << std::setw(12) << test.first 
+//                       << std::setw(10) << test.second.substr(0, 7) 
+//                       << cw.to_string() << std::endl;
+//         } else {
+//             std::cout << std::left << std::setw(12) << test.first 
+//                       << std::setw(10) << test.second.substr(0, 7) 
+//                       << "UNKNOWN OPCODE" << std::endl;
+//         }
+//     }
 
-    return 0;
-}
+//     return 0;
+// }
