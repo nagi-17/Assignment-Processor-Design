@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <cstdint>
 
 class Preprocessor {
 private:
@@ -50,6 +51,38 @@ private:
         }
     }
 
+    // implementing fmov using movu and movh to load 32-bit IEEE-754 float
+    void handle_fmov(const std::string& line, std::vector<std::string>& output) {
+        size_t space_pos = line.find_first_of(" \t");
+        std::string operands = line.substr(space_pos + 1);
+        
+        size_t comma_pos = operands.find(',');
+        if (comma_pos != std::string::npos) {
+            std::string rd = operands.substr(0, comma_pos);
+            
+            size_t imm_start = operands.find_first_not_of(" \t", comma_pos + 1);
+            std::string float_str = operands.substr(imm_start);
+            
+            // 1. Convert string to float
+            float f_val = std::stof(float_str);
+            
+            // 2. Use a union to extract raw IEEE-754 bits
+            union {
+                float f;
+                uint32_t i;
+            } ieee;
+            ieee.f = f_val;
+            
+            // 3. Mask out the upper and lower 16 bits
+            uint16_t upper_half = (ieee.i >> 16) & 0xFFFF;
+            uint16_t lower_half = ieee.i & 0xFFFF;
+            
+            // 4. Expand into hardware instructions
+            output.push_back("movu " + rd + ", " + std::to_string(upper_half));
+            output.push_back("movh " + rd + ", " + std::to_string(lower_half));
+        }
+    }
+
     void handle_push(const std::string& line, std::vector<std::string>& output) {
         size_t space_pos = line.find_first_of(" \t");
         size_t reg_start = line.find_first_not_of(" \t", space_pos);
@@ -83,7 +116,10 @@ public:
 
             if (first_word == "mov") {
                 handle_mov(clean_line, clean_expanded_lines);
-            } 
+            }
+            else if (first_word == "fmov") {
+                handle_fmov(clean_line, clean_expanded_lines);
+            }
             else if (first_word == "push") {
                 handle_push(clean_line, clean_expanded_lines);
             } 
