@@ -1,0 +1,33 @@
+CXX ?= g++
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -pedantic -O2
+DEBUGGER_DIR := src/debugger
+INCLUDES := -I$(DEBUGGER_DIR) -Isrc/headers -Isrc/headers/latches
+CORE_SOURCES := $(DEBUGGER_DIR)/debugger.cpp $(DEBUGGER_DIR)/debugger_cli.cpp
+BUILD_DIR := build/debugger
+
+.PHONY: all test test-core test-adapters demo clean
+all: test
+
+test: test-core test-adapters
+
+test-core:
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/debugger_tests.cpp $(DEBUGGER_DIR)/debugger.cpp -o $(BUILD_DIR)/debugger_tests
+	./$(BUILD_DIR)/debugger_tests
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/debugger_callback_target_test.cpp -o $(BUILD_DIR)/debugger_callback_target_test
+	./$(BUILD_DIR)/debugger_callback_target_test
+
+test-adapters:
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/debugger_four_stage_adapter_test.cpp $(DEBUGGER_DIR)/debugger.cpp -o $(BUILD_DIR)/four_stage_adapter_test
+	./$(BUILD_DIR)/four_stage_adapter_test
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/debugger_six_stage_adapter_test.cpp $(DEBUGGER_DIR)/debugger.cpp -o $(BUILD_DIR)/six_stage_adapter_test
+	./$(BUILD_DIR)/six_stage_adapter_test
+
+demo:
+	mkdir -p $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) examples/debugger_mock.cpp $(CORE_SOURCES) -o $(BUILD_DIR)/debugger_demo
+	./$(BUILD_DIR)/debugger_demo
+
+clean:
+	rm -rf $(BUILD_DIR)
