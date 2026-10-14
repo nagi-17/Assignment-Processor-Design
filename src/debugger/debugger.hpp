@@ -28,14 +28,13 @@ struct PipelineStageSnapshot {
 
 enum class DebugStopReason {
     None,
-    Breakpoint,          // CPU-reported stop, for example ebreak
-    AddressBreakpoint,   // CLI breakpoint at a program address
+    Breakpoint,          
+    AddressBreakpoint,   
     ProgramHalted,
     CpuError,
     Unknown
 };
 
-// One consistent, pipeline-independent view of the CPU for the CLI.
 struct DebuggerSnapshot {
     std::array<std::uint32_t, 16> registers{};
     std::uint32_t pc{0};
@@ -55,8 +54,6 @@ struct DebuggerSnapshot {
     DebugStopReason stop_reason{DebugStopReason::None};
 };
 
-// The CLI only knows this small contract. A real CPU can implement it directly,
-// or be wrapped by CallbackDebuggerTarget (see debugger_callback_target.hpp).
 class DebuggerTarget {
 public:
     virtual ~DebuggerTarget() = default;
@@ -84,4 +81,4 @@ bool parseRegisterIndex(std::string name, std::size_t& index);
 std::string hexAddress(std::uint64_t address);
 
 
-#endif // RISC201_DEBUGGER_HPP
+#endif 
