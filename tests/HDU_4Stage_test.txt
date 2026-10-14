@@ -1,0 +1,144 @@
+// Helper functions to synthesize raw RISC201 instructions for testing
+uint32_t encode_r(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2) {
+    return ((uint32_t)op << 26) | ((uint32_t)rd << 21) | ((uint32_t)rs1 << 17) | ((uint32_t)rs2 << 13);
+}
+
+uint32_t encode_i(uint8_t op, uint8_t rd, uint8_t rs1, uint16_t imm) {
+    return ((uint32_t)op << 26) | (1u << 25) | ((uint32_t)rd << 21) | ((uint32_t)rs1 << 17) | ((uint32_t)imm << 1);
+}
+
+int main() {
+    HazardDetectionUnit hdu;
+
+    std::cout << "================ RISC201 HAZARD UNIT TESTS ================\n";
+
+    // Test Case 1: RAW Hazard between OF and EX (Integer ALU)
+    {
+        Instruction ex_inst    = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));
+        Instruction of_inst    = Instruction::decode(encode_r(RISC201::OP_SUB, 4, 1, 5));
+        Instruction ma_rw_inst = Instruction::make_nop();
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, false, 0);
+        std::cout << "[Test 1] ALU RAW (OF reads r1 from EX):\n"
+                  << "  Expected: PC_Stall=1, IF_OF_Stall=1, OF_EX_Bubble=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_OF_Stall=" << sig.if_of_stall 
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble << "\n\n";
+    }
+
+    // Test Case 2: Store dependency (st rs2, rs1, imm)
+    {
+        Instruction ex_inst    = Instruction::make_nop();
+        Instruction ma_rw_inst = Instruction::decode(encode_i(RISC201::OP_LD, 2, 0, 4));
+        Instruction of_inst    = Instruction::decode(encode_i(RISC201::OP_ST, 2, 3, 8));
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, false, 0);
+        std::cout << "[Test 2] Store Payload RAW (OF 'st' reads r2 written by MA_RW):\n"
+                  << "  Expected: PC_Stall=1, IF_OF_Stall=1, OF_EX_Bubble=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_OF_Stall=" << sig.if_of_stall 
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble << "\n\n";
+    }
+
+    // Test Case 3: Zero Register r12 immunity
+    {
+        Instruction ex_inst    = Instruction::decode(encode_r(RISC201::OP_ADD, 12, 1, 2));
+        Instruction of_inst    = Instruction::decode(encode_r(RISC201::OP_ADD, 3, 12, 4));
+        Instruction ma_rw_inst = Instruction::make_nop();
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, false, 0);
+        std::cout << "[Test 3] Zero Register r12 Immunity:\n"
+                  << "  Expected: PC_Stall=0, IF_OF_Stall=0, OF_EX_Bubble=0\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_OF_Stall=" << sig.if_of_stall 
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble << "\n\n";
+    }
+
+    // Test Case 4: Link Register r15 RAW Hazard (call -> ret)
+    {
+        Instruction ex_inst    = Instruction::decode(encode_i(RISC201::OP_CALL, 0, 0, 0x100));
+        Instruction of_inst    = Instruction::decode(encode_r(RISC201::OP_RET, 0, 0, 0));
+        Instruction ma_rw_inst = Instruction::make_nop();
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, false, 0);
+        std::cout << "[Test 4] Return Address (call in EX writes r15, ret in OF reads r15):\n"
+                  << "  Expected: PC_Stall=1, IF_OF_Stall=1, OF_EX_Bubble=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_OF_Stall=" << sig.if_of_stall 
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble << "\n\n";
+    }
+
+    // Test Case 5: Branch Taken Overriding Data Conflict
+    {
+        Instruction ex_inst    = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));
+        Instruction of_inst    = Instruction::decode(encode_r(RISC201::OP_SUB, 4, 1, 5));
+        Instruction ma_rw_inst = Instruction::make_nop();
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, true, 0x0040);
+        std::cout << "[Test 5] Branch Taken Override (EX redirects PC to 0x40):\n"
+                  << "  Expected: Branch_Taken=1, Target=0x40, Flush=1, Bubble=1, Stall=0\n"
+                  << "  Actual:   Branch_Taken=" << sig.branch_taken 
+                  << ", Target=0x" << std::hex << sig.branch_pc << std::dec
+                  << ", IF_OF_Flush=" << sig.if_of_flush
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble
+                  << ", PC_Stall=" << sig.pc_stall << "\n\n";
+    }
+
+    // Test Case 6: FPU RAW Hazard
+    {
+        Instruction ex_inst    = Instruction::decode(encode_r(RISC201::OP_FADD, 8, 9, 10));
+        Instruction of_inst    = Instruction::decode(encode_r(RISC201::OP_FMUL, 11, 8, 9));
+        Instruction ma_rw_inst = Instruction::make_nop();
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, false, 0);
+        std::cout << "[Test 6] FPU RAW Conflict:\n"
+                  << "  Expected: PC_Stall=1, IF_OF_Stall=1, OF_EX_Bubble=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_OF_Stall=" << sig.if_of_stall 
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble << "\n\n";
+    }
+
+    // Test Case 7: MOVU Overwrite (No Stall when MOVU follows producer on same reg)
+    {
+        Instruction ex_inst    = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));
+        Instruction of_inst    = Instruction::decode(encode_i(RISC201::OP_MOVU, 1, 0, 0x1234));
+        Instruction ma_rw_inst = Instruction::make_nop();
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, false, 0);
+        std::cout << "[Test 7] MOVU Pure Overwrite (EX writes r1, OF movu overwrites r1):\n"
+                  << "  Expected: PC_Stall=0, IF_OF_Stall=0, OF_EX_Bubble=0\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_OF_Stall=" << sig.if_of_stall 
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble << "\n\n";
+    }
+
+    // Test Case 8: MOVH Overwrite (No Stall when MOVH follows producer on same reg)
+    {
+        Instruction ex_inst    = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));
+        Instruction of_inst    = Instruction::decode(encode_i(RISC201::OP_MOVH, 1, 0, 0x5678));
+        Instruction ma_rw_inst = Instruction::make_nop();
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, false, 0);
+        std::cout << "[Test 8] MOVH Pure Overwrite (EX writes r1, OF movh overwrites r1):\n"
+                  << "  Expected: PC_Stall=0, IF_OF_Stall=0, OF_EX_Bubble=0\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_OF_Stall=" << sig.if_of_stall 
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble << "\n\n";
+    }
+
+    // Test Case 9: MOVU as Producer (Consumer in OF reads r1 produced by MOVU in EX)
+    {
+        Instruction ex_inst    = Instruction::decode(encode_i(RISC201::OP_MOVU, 1, 0, 0x1234));
+        Instruction of_inst    = Instruction::decode(encode_r(RISC201::OP_ADD, 4, 1, 5));
+        Instruction ma_rw_inst = Instruction::make_nop();
+
+        auto sig = hdu.evaluate(of_inst, ex_inst, ma_rw_inst, false, 0);
+        std::cout << "[Test 9] MOVU Producer RAW (EX movu writes r1, OF add reads r1):\n"
+                  << "  Expected: PC_Stall=1, IF_OF_Stall=1, OF_EX_Bubble=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_OF_Stall=" << sig.if_of_stall 
+                  << ", OF_EX_Bubble=" << sig.of_ex_bubble << "\n";
+    }
+
+    return 0;
+}

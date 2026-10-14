@@ -1,0 +1,598 @@
+
+// IEEE-754 32-bit Single Precision Constants
+constexpr uint32_t FP_POS_ZERO     = 0x00000000; // +0.0
+constexpr uint32_t FP_NEG_ZERO     = 0x80000000; // -0.0
+constexpr uint32_t FP_POS_ONE      = 0x3F800000; // +1.0
+constexpr uint32_t FP_NEG_ONE      = 0xBF800000; // -1.0
+constexpr uint32_t FP_POS_TWO      = 0x40000000; // +2.0
+constexpr uint32_t FP_NEG_TWO      = 0xC0000000; // -2.0
+constexpr uint32_t FP_POS_THREE    = 0x40400000; // +3.0
+constexpr uint32_t FP_NEG_THREE    = 0xC0400000; // -3.0
+constexpr uint32_t FP_POS_FOUR     = 0x40800000; // +4.0
+constexpr uint32_t FP_POS_FIVE     = 0x40A00000; // +5.0
+constexpr uint32_t FP_NEG_FIVE     = 0xC0A00000; // -5.0
+constexpr uint32_t FP_POS_SIX      = 0x40C00000; // +6.0
+constexpr uint32_t FP_POS_HALF     = 0x3F000000; // +0.5
+constexpr uint32_t FP_POS_INF      = 0x7F800000; // +Inf
+constexpr uint32_t FP_NEG_INF      = 0xFF800000; // -Inf
+constexpr uint32_t FP_CANON_NAN    = 0x7FC00000; // Quiet NaN
+constexpr uint32_t FP_MAX_NORMAL   = 0x7F7FFFFF; // Max Normal Float (~3.4028e38)
+constexpr uint32_t FP_MIN_SUBNORM  = 0x00000001; // Denormalized Float
+
+void run_fpu_test_suite() {
+    FPU fpu;
+
+    std::cout << "================ RISC201 FPU UNIT COMPREHENSIVE TESTS ================\n\n";
+
+    // =========================================================================
+    // SECTION 1: FLOATING POINT ADDITION (OP_FADD)
+    // =========================================================================
+
+    // Test 1: Basic Positive Addition without rounding
+    {
+        uint32_t a = FP_POS_ONE;   // 1.0
+        uint32_t b = FP_POS_TWO;   // 2.0
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 1] FADD: Basic Addition (1.0 + 2.0 = 3.0):\n"
+                  << "  Expected: res=0x40400000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 2: Mantissa Overflow on Addition (Bit 27 set, exponent increment)
+    {
+        uint32_t a = 0x3FC00000; // 1.5
+        uint32_t b = 0x3FC00000; // 1.5
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 2] FADD: Mantissa Overflow (1.5 + 1.5 = 3.0, exp increment):\n"
+                  << "  Expected: res=0x40400000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 3: Swap Operands Logic (op1 < op2 in magnitude)
+    {
+        uint32_t a = FP_POS_ONE;   // 1.0
+        uint32_t b = FP_POS_FIVE;  // 5.0
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 3] FADD: Operand Swap (1.0 + 5.0 = 6.0):\n"
+                  << "  Expected: res=0x40C00000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 4: Tie-to-Even Rounding - Downward round when LSB is Even
+    {
+        uint32_t a = FP_POS_ONE;   // 1.0 (mantissa LSB is 0)
+        uint32_t b = 0x33800000;   // 2^-24 (shifts to Guard=1, Round=0, Sticky=0)
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 4] FADD: Tie-to-Even Round Down (LSB is 0, discards half-ulp):\n"
+                  << "  Expected: res=0x3F800000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 5: Tie-to-Even Rounding - Upward round when LSB is Odd
+    {
+        uint32_t a = 0x3F800001;   // 1.0 + 2^-23 (mantissa LSB is 1)
+        uint32_t b = 0x33800000;   // 2^-24 (shifts to Guard=1, Round=0, Sticky=0)
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 5] FADD: Tie-to-Even Round Up (LSB is 1, rounds up to even):\n"
+                  << "  Expected: res=0x3F800002, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 6: Round-up Overflow into Next Exponent
+    {
+        uint32_t a = 0x3FFFFFFF;   // Just below 2.0 (all 23 mantissa bits = 1)
+        uint32_t b = 0x33800000;   // 2^-24
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 6] FADD: Round-up Mantissa Ripple Overflow (promotes exp to 2.0):\n"
+                  << "  Expected: res=0x40000000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 7: Large Exponent Shift (expDiff >= 27 sticky-bit compression)
+    {
+        uint32_t a = FP_POS_ONE;   // 1.0 (exp = 127)
+        uint32_t b = 0x30800000;   // 2^-30 (exp = 97, expDiff = 30 >= 27)
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 7] FADD: Large Exp Difference Shift (expDiff >= 27, sticky=1):\n"
+                  << "  Expected: res=0x3F800000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 8: Effective Subtraction via Addition of Opposite Signs (Normalization Shift)
+    {
+        uint32_t a = FP_POS_TWO;   // +2.0
+        uint32_t b = 0xBFF00000;   // -1.875
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 8] FADD: Effective Subtraction (2.0 + -1.875 = 0.125, normalization loop):\n"
+                  << "  Expected: res=0x3E000000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 9: Effective Subtraction yielding Negative Result
+    {
+        uint32_t a = FP_POS_ONE;   // +1.0
+        uint32_t b = FP_NEG_THREE; // -3.0
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 9] FADD: Effective Subtraction Negative (1.0 + -3.0 = -2.0):\n"
+                  << "  Expected: res=0xC0000000, Z=0, N=1, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 10: Exact Cancellation (resMant == 0)
+    {
+        uint32_t a = 0x40B00000;   // +5.5
+        uint32_t b = 0xC0B00000;   // -5.5
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 10] FADD: Exact Cancellation (+5.5 + -5.5 = +0.0):\n"
+                  << "  Expected: res=0x00000000, Z=1, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 11: Overflow to Positive Infinity (exp >= 255)
+    {
+        uint32_t a = FP_MAX_NORMAL;
+        uint32_t b = FP_MAX_NORMAL;
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 11] FADD: Overflow to +Infinity (MaxFloat + MaxFloat):\n"
+                  << "  Expected: res=0x7F800000, Z=0, N=0, V=1, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 12: Overflow to Negative Infinity
+    {
+        uint32_t a = FP_MAX_NORMAL | (1u << 31);
+        uint32_t b = FP_MAX_NORMAL | (1u << 31);
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 12] FADD: Overflow to -Infinity (-MaxFloat + -MaxFloat):\n"
+                  << "  Expected: res=0xFF800000, Z=0, N=1, V=1, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 13: Zero Addition Special Cases
+    {
+        auto out1 = fpu.execute(FP_POS_ZERO, FP_POS_ZERO, FPU::OP_FADD);
+        auto out2 = fpu.execute(FP_NEG_ZERO, FP_NEG_ZERO, FPU::OP_FADD);
+        auto out3 = fpu.execute(FP_POS_ZERO, FP_NEG_ZERO, FPU::OP_FADD);
+        std::cout << "[Test 13] FADD: Zero Handling (+0++0, -0+-0, +0+-0):\n"
+                  << "  Expected: (+0) res=0x00000000 Z=1, (-0) res=0x80000000 Z=1 N=1, (+0+-0) res=0x00000000 Z=1\n"
+                  << "  Actual:   (+0) res=0x" << std::hex << out1.res << " Z=" << out1.Z
+                  << ", (-0) res=0x" << out2.res << " Z=" << out2.Z << " N=" << out2.N
+                  << ", (+0+-0) res=0x" << out3.res << " Z=" << out3.Z << std::dec << "\n\n";
+    }
+
+    // Test 14: Infinity Addition and Indeterminate Form (+Inf + -Inf)
+    {
+        auto out1 = fpu.execute(FP_POS_INF, FP_POS_INF, FPU::OP_FADD);
+        auto out2 = fpu.execute(FP_POS_INF, FP_NEG_INF, FPU::OP_FADD);
+        std::cout << "[Test 14] FADD: Infinity Operations (+Inf + +Inf, +Inf + -Inf):\n"
+                  << "  Expected: (+Inf) res=0x7F800000 V=1, (Indeterminate) res=0x7FC00000 NaN=1\n"
+                  << "  Actual:   (+Inf) res=0x" << std::hex << out1.res << " V=" << out1.V
+                  << ", (Indeterminate) res=0x" << out2.res << " NaN=" << out2.NaN << std::dec << "\n\n";
+    }
+
+    // =========================================================================
+    // SECTION 2: FLOATING POINT SUBTRACTION (OP_FSUB)
+    // =========================================================================
+
+    // Test 15: Basic Positive Subtraction
+    {
+        uint32_t a = FP_POS_FIVE;  // 5.0
+        uint32_t b = FP_POS_TWO;   // 2.0
+        auto out = fpu.execute(a, b, FPU::OP_FSUB);
+        std::cout << "[Test 15] FSUB: Basic Subtraction (5.0 - 2.0 = 3.0):\n"
+                  << "  Expected: res=0x40400000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 16: Negative Result Subtraction (A < B)
+    {
+        uint32_t a = FP_POS_TWO;   // 2.0
+        uint32_t b = FP_POS_FIVE;  // 5.0
+        auto out = fpu.execute(a, b, FPU::OP_FSUB);
+        std::cout << "[Test 16] FSUB: Negative Result (2.0 - 5.0 = -3.0):\n"
+                  << "  Expected: res=0xC0400000, Z=0, N=1, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 17: Subtraction of Negative Number (Double Negative = Add)
+    {
+        uint32_t a = FP_POS_TWO;   // 2.0
+        uint32_t b = FP_NEG_THREE; // -3.0
+        auto out = fpu.execute(a, b, FPU::OP_FSUB);
+        std::cout << "[Test 17] FSUB: Subtraction of Negative (2.0 - (-3.0) = 5.0):\n"
+                  << "  Expected: res=0x40A00000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 18: Subtraction Exact Cancellation
+    {
+        uint32_t a = 0x40E80000;   // 7.25
+        uint32_t b = 0x40E80000;   // 7.25
+        auto out = fpu.execute(a, b, FPU::OP_FSUB);
+        std::cout << "[Test 18] FSUB: Exact Cancellation (7.25 - 7.25 = 0.0):\n"
+                  << "  Expected: res=0x00000000, Z=1, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 19: Subtraction Involving Zeroes
+    {
+        auto out1 = fpu.execute(FP_POS_ZERO, FP_POS_FIVE, FPU::OP_FSUB);
+        auto out2 = fpu.execute(FP_POS_FIVE, FP_POS_ZERO, FPU::OP_FSUB);
+        std::cout << "[Test 19] FSUB: Zero Operand Subtractions (0 - 5.0, 5.0 - 0):\n"
+                  << "  Expected: (0 - 5.0) res=0xC0A00000 N=1, (5.0 - 0) res=0x40A00000 N=0\n"
+                  << "  Actual:   (0 - 5.0) res=0x" << std::hex << out1.res << " N=" << out1.N
+                  << ", (5.0 - 0) res=0x" << out2.res << " N=" << out2.N << std::dec << "\n\n";
+    }
+
+    // Test 20: Subtraction Infinity Corner Cases
+    {
+        auto out1 = fpu.execute(FP_POS_INF, FP_POS_INF, FPU::OP_FSUB);
+        auto out2 = fpu.execute(FP_POS_INF, FP_NEG_INF, FPU::OP_FSUB);
+        std::cout << "[Test 20] FSUB: Infinity Subtractions (+Inf - +Inf, +Inf - -Inf):\n"
+                  << "  Expected: (+Inf - +Inf) res=0x7FC00000 NaN=1, (+Inf - -Inf) res=0x7F800000 V=1\n"
+                  << "  Actual:   (+Inf - +Inf) res=0x" << std::hex << out1.res << " NaN=" << out1.NaN
+                  << ", (+Inf - -Inf) res=0x" << out2.res << " V=" << out2.V << std::dec << "\n\n";
+    }
+
+    // =========================================================================
+    // SECTION 3: FLOATING POINT MULTIPLICATION (OP_FMUL)
+    // =========================================================================
+
+    // Test 21: Basic Exact Multiplication
+    {
+        uint32_t a = FP_POS_TWO;   // 2.0
+        uint32_t b = FP_POS_THREE; // 3.0
+        auto out = fpu.execute(a, b, FPU::OP_FMUL);
+        std::cout << "[Test 21] FMUL: Basic Multiplication (2.0 * 3.0 = 6.0):\n"
+                  << "  Expected: res=0x40C00000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 22: Multiplication Sign XOR Combinations
+    {
+        auto out1 = fpu.execute(FP_NEG_TWO, FP_POS_THREE, FPU::OP_FMUL);
+        auto out2 = fpu.execute(FP_NEG_TWO, FP_NEG_THREE, FPU::OP_FMUL);
+        std::cout << "[Test 22] FMUL: Sign Combinations (-2 * 3 = -6, -2 * -3 = +6):\n"
+                  << "  Expected: (-2*3) res=0xC0C00000 N=1, (-2*-3) res=0x40C00000 N=0\n"
+                  << "  Actual:   (-2*3) res=0x" << std::hex << out1.res << " N=" << out1.N
+                  << ", (-2*-3) res=0x" << out2.res << " N=" << out2.N << std::dec << "\n\n";
+    }
+
+    // Test 23: Mantissa Product in [2, 4) - Leading 1 at bit 47 with exponent increment
+    {
+        uint32_t a = 0x3FC00000; // 1.5
+        uint32_t b = 0x3FC00000; // 1.5 (1.5 * 1.5 = 2.25)
+        auto out = fpu.execute(a, b, FPU::OP_FMUL);
+        std::cout << "[Test 23] FMUL: Product in [2, 4) (1.5 * 1.5 = 2.25, bit 47 exp increment):\n"
+                  << "  Expected: res=0x40100000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 24: Mantissa Product in [1, 2) - Leading 1 at bit 46
+    {
+        uint32_t a = 0x3FA00000; // 1.25
+        uint32_t b = 0x3FA00000; // 1.25 (1.25 * 1.25 = 1.5625)
+        auto out = fpu.execute(a, b, FPU::OP_FMUL);
+        std::cout << "[Test 24] FMUL: Product in [1, 2) (1.25 * 1.25 = 1.5625, bit 46):\n"
+                  << "  Expected: res=0x3FC80000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 25: Multiplication Overflow to Infinity
+    {
+        uint32_t a = 0x71800000; // 2^100
+        uint32_t b = 0x71800000; // 2^100 (2^200 exceeds float range)
+        auto out = fpu.execute(a, b, FPU::OP_FMUL);
+        std::cout << "[Test 25] FMUL: Multiplication Exponent Overflow (2^100 * 2^100):\n"
+                  << "  Expected: res=0x7F800000, Z=0, N=0, V=1, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 26: Multiplication Underflow Flush to Zero
+    {
+        uint32_t a = 0x1C800000; // 2^-70
+        uint32_t b = 0x1C800000; // 2^-70 (2^-140 underflows exp <= 0)
+        auto out = fpu.execute(a, b, FPU::OP_FMUL);
+        std::cout << "[Test 26] FMUL: Multiplication Underflow to Zero (2^-70 * 2^-70):\n"
+                  << "  Expected: res=0x00000000, Z=1, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 27: Multiplication by Zero with Signed Preservation
+    {
+        auto out1 = fpu.execute(FP_POS_ZERO, FP_POS_FIVE, FPU::OP_FMUL);
+        auto out2 = fpu.execute(FP_NEG_ZERO, FP_POS_FIVE, FPU::OP_FMUL);
+        auto out3 = fpu.execute(FP_NEG_ZERO, FP_NEG_FIVE, FPU::OP_FMUL);
+        std::cout << "[Test 27] FMUL: Zero Multiplication Signs (+0*5, -0*5, -0*-5):\n"
+                  << "  Expected: (+0*5) res=0x00000000 N=0, (-0*5) res=0x80000000 N=1, (-0*-5) res=0x00000000 N=0\n"
+                  << "  Actual:   (+0*5) res=0x" << std::hex << out1.res << " N=" << out1.N
+                  << ", (-0*5) res=0x" << out2.res << " N=" << out2.N
+                  << ", (-0*-5) res=0x" << out3.res << " N=" << out3.N << std::dec << "\n\n";
+    }
+
+    // Test 28: Indeterminate Multiplication (Inf * 0 and 0 * Inf)
+    {
+        auto out1 = fpu.execute(FP_POS_INF, FP_POS_ZERO, FPU::OP_FMUL);
+        auto out2 = fpu.execute(FP_POS_ZERO, FP_POS_INF, FPU::OP_FMUL);
+        std::cout << "[Test 28] FMUL: Indeterminate Forms (Inf * 0, 0 * Inf):\n"
+                  << "  Expected: res=0x7FC00000, Z=0, N=0, V=0, NaN=1\n"
+                  << "  Actual:   (Inf*0) res=0x" << std::hex << out1.res << " NaN=" << out1.NaN
+                  << ", (0*Inf) res=0x" << out2.res << " NaN=" << out2.NaN << std::dec << "\n\n";
+    }
+
+    // =========================================================================
+    // SECTION 4: FLOATING POINT DIVISION (OP_FDIV)
+    // =========================================================================
+
+    // Test 29: Basic Exact Division (A >= B branch, leading 1 at bit 27)
+    {
+        uint32_t a = FP_POS_SIX;   // 6.0
+        uint32_t b = FP_POS_TWO;   // 2.0
+        auto out = fpu.execute(a, b, FPU::OP_FDIV);
+        std::cout << "[Test 29] FDIV: Exact Division A >= B (6.0 / 2.0 = 3.0, bit 27):\n"
+                  << "  Expected: res=0x40400000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 30: Exact Division (A < B branch, leading 1 at bit 26 with exp decrement)
+    {
+        uint32_t a = FP_POS_ONE;   // 1.0
+        uint32_t b = FP_POS_TWO;   // 2.0
+        auto out = fpu.execute(a, b, FPU::OP_FDIV);
+        std::cout << "[Test 30] FDIV: Exact Division A < B (1.0 / 2.0 = 0.5, bit 26 exp decrement):\n"
+                  << "  Expected: res=0x3F000000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 31: Inexact Division with 28-bit Restoring Quotient and Rounding (2.0 / 3.0)
+    {
+        uint32_t a = FP_POS_TWO;   // 2.0
+        uint32_t b = FP_POS_THREE; // 3.0 (2/3 = 0.6666667)
+        auto out = fpu.execute(a, b, FPU::OP_FDIV);
+        std::cout << "[Test 31] FDIV: Inexact Division with Rounding (2.0 / 3.0 = 0.6666667):\n"
+                  << "  Expected: res=0x3F2AAAAB, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 32: Inexact Division with Rounding (1.0 / 3.0)
+    {
+        uint32_t a = FP_POS_ONE;   // 1.0
+        uint32_t b = FP_POS_THREE; // 3.0 (1/3 = 0.33333334)
+        auto out = fpu.execute(a, b, FPU::OP_FDIV);
+        std::cout << "[Test 32] FDIV: Inexact Division with Rounding (1.0 / 3.0 = 0.33333334):\n"
+                  << "  Expected: res=0x3EAAAAAB, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 33: Division by Zero (+5.0 / +0.0, -5.0 / +0.0, +5.0 / -0.0)
+    {
+        auto out1 = fpu.execute(FP_POS_FIVE, FP_POS_ZERO, FPU::OP_FDIV);
+        auto out2 = fpu.execute(FP_NEG_FIVE, FP_POS_ZERO, FPU::OP_FDIV);
+        auto out3 = fpu.execute(FP_POS_FIVE, FP_NEG_ZERO, FPU::OP_FDIV);
+        std::cout << "[Test 33] FDIV: Division by Zero (+5/+0, -5/+0, +5/-0):\n"
+                  << "  Expected: (+5/+0) res=0x7F800000 V=1, (-5/+0) res=0xFF800000 V=1 N=1, (+5/-0) res=0xFF800000 V=1 N=1\n"
+                  << "  Actual:   (+5/+0) res=0x" << std::hex << out1.res << " V=" << out1.V << " N=" << out1.N
+                  << ", (-5/+0) res=0x" << out2.res << " V=" << out2.V << " N=" << out2.N
+                  << ", (+5/-0) res=0x" << out3.res << " V=" << out3.V << " N=" << out3.N << std::dec << "\n\n";
+    }
+
+    // Test 34: Indeterminate Division (0/0 and Inf/Inf)
+    {
+        auto out1 = fpu.execute(FP_POS_ZERO, FP_POS_ZERO, FPU::OP_FDIV);
+        auto out2 = fpu.execute(FP_POS_INF, FP_POS_INF, FPU::OP_FDIV);
+        std::cout << "[Test 34] FDIV: Indeterminate Forms (0/0 and Inf/Inf):\n"
+                  << "  Expected: res=0x7FC00000, Z=0, N=0, V=0, NaN=1\n"
+                  << "  Actual:   (0/0) res=0x" << std::hex << out1.res << " NaN=" << out1.NaN
+                  << ", (Inf/Inf) res=0x" << out2.res << " NaN=" << out2.NaN << std::dec << "\n\n";
+    }
+
+    // Test 35: Division Zero Numerator and Infinite Denominator
+    {
+        auto out1 = fpu.execute(FP_POS_ZERO, FP_POS_FIVE, FPU::OP_FDIV);
+        auto out2 = fpu.execute(FP_POS_FIVE, FP_POS_INF, FPU::OP_FDIV);
+        std::cout << "[Test 35] FDIV: Zero Numerator & Infinite Denominator (0/5, 5/Inf):\n"
+                  << "  Expected: (0/5) res=0x00000000 Z=1, (5/Inf) res=0x00000000 Z=1\n"
+                  << "  Actual:   (0/5) res=0x" << std::hex << out1.res << " Z=" << out1.Z
+                  << ", (5/Inf) res=0x" << out2.res << " Z=" << out2.Z << std::dec << "\n\n";
+    }
+
+    // =========================================================================
+    // SECTION 5: FLOATING POINT COMPARE (OP_FCMP)
+    // =========================================================================
+
+    // Test 36: Compare Identical Positive Values (A == B)
+    {
+        uint32_t a = 0x40600000; // 3.5
+        uint32_t b = 0x40600000; // 3.5
+        auto out = fpu.execute(a, b, FPU::OP_FCMP);
+        std::cout << "[Test 36] FCMP: Equality Positive (3.5 == 3.5):\n"
+                  << "  Expected: res=0x00000000, Z=1, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 37: Compare Identical Negative Values (-A == -B)
+    {
+        uint32_t a = 0xC0880000; // -4.25
+        uint32_t b = 0xC0880000; // -4.25
+        auto out = fpu.execute(a, b, FPU::OP_FCMP);
+        std::cout << "[Test 37] FCMP: Equality Negative (-4.25 == -4.25):\n"
+                  << "  Expected: res=0x00000000, Z=1, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 38: Compare Positive Zero and Negative Zero (+0.0 == -0.0)
+    {
+        uint32_t a = FP_POS_ZERO;
+        uint32_t b = FP_NEG_ZERO;
+        auto out = fpu.execute(a, b, FPU::OP_FCMP);
+        std::cout << "[Test 38] FCMP: Signed Zero Equivalence (+0.0 == -0.0):\n"
+                  << "  Expected: res=0x00000000, Z=1, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 39: Compare Positive Less-Than via Exponent (2.0 < 4.0)
+    {
+        uint32_t a = FP_POS_TWO;  // 2.0 (exp 128)
+        uint32_t b = FP_POS_FOUR; // 4.0 (exp 129)
+        auto out = fpu.execute(a, b, FPU::OP_FCMP);
+        std::cout << "[Test 39] FCMP: Positive Less-Than via Exp (2.0 < 4.0):\n"
+                  << "  Expected: res=0x00000000, Z=0, N=1, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 40: Compare Positive Greater-Than via Exponent (4.0 > 2.0)
+    {
+        uint32_t a = FP_POS_FOUR; // 4.0
+        uint32_t b = FP_POS_TWO;  // 2.0
+        auto out = fpu.execute(a, b, FPU::OP_FCMP);
+        std::cout << "[Test 40] FCMP: Positive Greater-Than via Exp (4.0 > 2.0):\n"
+                  << "  Expected: res=0x00000000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 41: Compare Equal Exponent, Mantissa Difference (3.0 < 3.5)
+    {
+        uint32_t a = FP_POS_THREE; // 3.0 (mant 0x400000)
+        uint32_t b = 0x40600000;   // 3.5 (mant 0x600000)
+        auto out = fpu.execute(a, b, FPU::OP_FCMP);
+        std::cout << "[Test 41] FCMP: Positive Comparison via Mantissa (3.0 < 3.5):\n"
+                  << "  Expected: res=0x00000000, Z=0, N=1, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 42: Negative Comparison Polarity Inversion (-5.0 < -2.0)
+    {
+        uint32_t a = FP_NEG_FIVE; // -5.0
+        uint32_t b = FP_NEG_TWO;  // -2.0
+        auto out = fpu.execute(a, b, FPU::OP_FCMP);
+        std::cout << "[Test 42] FCMP: Negative Comparison Polarity (-5.0 < -2.0):\n"
+                  << "  Expected: res=0x00000000, Z=0, N=1, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 43: Negative Comparison Greater-Than (-2.0 > -5.0)
+    {
+        uint32_t a = FP_NEG_TWO;  // -2.0
+        uint32_t b = FP_NEG_FIVE; // -5.0
+        auto out = fpu.execute(a, b, FPU::OP_FCMP);
+        std::cout << "[Test 43] FCMP: Negative Comparison Greater-Than (-2.0 > -5.0):\n"
+                  << "  Expected: res=0x00000000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 44: Mixed Sign Comparison (+1.0 vs -10.0 and -1.0 vs +0.5)
+    {
+        auto out1 = fpu.execute(FP_POS_ONE, 0xC1200000, FPU::OP_FCMP); // +1.0 vs -10.0
+        auto out2 = fpu.execute(FP_NEG_ONE, FP_POS_HALF, FPU::OP_FCMP); // -1.0 vs +0.5
+        std::cout << "[Test 44] FCMP: Mixed Sign Comparisons (+1.0 > -10.0, -1.0 < +0.5):\n"
+                  << "  Expected: (+1>-10) Z=0 N=0, (-1<+0.5) Z=0 N=1\n"
+                  << "  Actual:   (+1>-10) Z=" << out1.Z << " N=" << out1.N
+                  << ", (-1<+0.5) Z=" << out2.Z << " N=" << out2.N << "\n\n";
+    }
+
+    // Test 45: Infinity Comparison (+Inf == +Inf, -Inf < +Inf)
+    {
+        auto out1 = fpu.execute(FP_POS_INF, FP_POS_INF, FPU::OP_FCMP);
+        auto out2 = fpu.execute(FP_NEG_INF, FP_POS_INF, FPU::OP_FCMP);
+        std::cout << "[Test 45] FCMP: Infinity Comparisons (+Inf == +Inf, -Inf < +Inf):\n"
+                  << "  Expected: (+Inf==+Inf) Z=1 N=0, (-Inf<+Inf) Z=0 N=1\n"
+                  << "  Actual:   (+Inf==+Inf) Z=" << out1.Z << " N=" << out1.N
+                  << ", (-Inf<+Inf) Z=" << out2.Z << " N=" << out2.N << "\n\n";
+    }
+
+    // Test 46: Unordered Comparison with NaN
+    {
+        auto out1 = fpu.execute(FP_CANON_NAN, FP_POS_FIVE, FPU::OP_FCMP);
+        auto out2 = fpu.execute(FP_CANON_NAN, FP_CANON_NAN, FPU::OP_FCMP);
+        std::cout << "[Test 46] FCMP: Unordered Comparisons with NaN (NaN vs 5.0, NaN vs NaN):\n"
+                  << "  Expected: res=0x00000000, Z=0, N=0, V=0, NaN=1\n"
+                  << "  Actual:   (NaN vs 5.0) NaN=" << out1.NaN << " Z=" << out1.Z
+                  << ", (NaN vs NaN) NaN=" << out2.NaN << " Z=" << out2.Z << "\n\n";
+    }
+
+    // =========================================================================
+    // SECTION 6: SUBNORMALS & EDGE CASES
+    // =========================================================================
+
+    // Test 47: Subnormal Input Flushed to Zero in Addition
+    {
+        uint32_t a = FP_MIN_SUBNORM; // 0x00000001 (exp == 0, flushed to 0)
+        uint32_t b = FP_POS_TWO;     // 2.0
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 47] Subnormal Flush-to-Zero (Subnormal + 2.0 = 2.0):\n"
+                  << "  Expected: res=0x40000000, Z=0, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 48: Subnormal Addition Yielding Zero
+    {
+        uint32_t a = FP_MIN_SUBNORM;       // 0x00000001
+        uint32_t b = FP_MIN_SUBNORM << 1;  // 0x00000002
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 48] Subnormal Addition Flush (Subnormal + Subnormal = 0.0):\n"
+                  << "  Expected: res=0x00000000, Z=1, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 49: Propagation of NaN Operand across FADD
+    {
+        uint32_t a = FP_CANON_NAN;
+        uint32_t b = FP_POS_ONE;
+        auto out = fpu.execute(a, b, FPU::OP_FADD);
+        std::cout << "[Test 49] NaN Propagation (NaN + 1.0):\n"
+                  << "  Expected: res=0x7FC00000, Z=0, N=0, V=0, NaN=1\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+
+    // Test 50: Division Underflow to Zero (exp <= 0)
+    {
+        uint32_t a = 0x0D800000; // 2^-100
+        uint32_t b = 0x71800000; // 2^100 (2^-200 underflows)
+        auto out = fpu.execute(a, b, FPU::OP_FDIV);
+        std::cout << "[Test 50] FDIV: Exponent Underflow to Zero (2^-100 / 2^100):\n"
+                  << "  Expected: res=0x00000000, Z=1, N=0, V=0, NaN=0\n"
+                  << "  Actual:   res=0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << out.res 
+                  << std::dec << ", Z=" << out.Z << ", N=" << out.N << ", V=" << out.V << ", NaN=" << out.NaN << "\n\n";
+    }
+}
+
+int main() {
+    run_fpu_test_suite();
+    return 0;
+}

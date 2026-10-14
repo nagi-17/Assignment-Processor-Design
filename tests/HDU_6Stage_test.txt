@@ -1,0 +1,238 @@
+// Instruction Encoders (Defined before use to prevent compiler errors)
+
+inline uint32_t encode_r(uint8_t op, uint8_t rd, uint8_t rs1, uint8_t rs2) {
+    return ((uint32_t)(op & 0x3F) << 26) | 
+           ((uint32_t)(rd & 0x0F) << 21) | 
+           ((uint32_t)(rs1 & 0x0F) << 17) | 
+           ((uint32_t)(rs2 & 0x0F) << 13);
+}
+
+inline uint32_t encode_i(uint8_t op, uint8_t rd, uint8_t rs1, uint16_t imm) {
+    return ((uint32_t)(op & 0x3F) << 26) | 
+           (1u << 25) | 
+           ((uint32_t)(rd & 0x0F) << 21) | 
+           ((uint32_t)(rs1 & 0x0F) << 17) | 
+           ((uint32_t)(imm & 0xFFFF) << 1);
+}
+
+// 6-Stage Hazard Detection Test Suite
+
+void run_test_suite() {
+    HazardDetectionUnit hdu;
+    Instruction nop = Instruction::make_nop();[cite: 1]
+
+    std::cout << "================ RISC201 6-STAGE HAZARD UNIT TESTS ================\n\n";
+
+    // Test 1: ALU RAW on rs1 in EX
+    {
+        Instruction ex_inst = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));[cite: 1]
+        Instruction id_inst = Instruction::decode(encode_r(RISC201::OP_SUB, 4, 1, 5));[cite: 1]
+
+        auto sig = hdu.evaluate(id_inst, ex_inst, nop, nop, nop, false, 0);
+        std::cout << "[Test 1] ALU RAW (ID reads r1 from EX):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_EX=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_EX=" << sig.hazard_ex << "\n\n";
+    }
+
+    // Test 2: ALU RAW on rs2 in EX
+    {
+        Instruction ex_inst = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));[cite: 1]
+        Instruction id_inst = Instruction::decode(encode_r(RISC201::OP_SUB, 4, 5, 1));
+
+        auto sig = hdu.evaluate(id_inst, ex_inst, nop, nop, nop, false, 0);
+        std::cout << "[Test 2] ALU RAW on rs2 (ID reads r1 from EX):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_EX=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_EX=" << sig.hazard_ex << "\n\n";
+    }
+
+    // Test 3: Load RAW in MA1 (Memory access in progress)
+    {
+        Instruction ma1_inst = Instruction::decode(encode_i(RISC201::OP_LD, 6, 0, 0x10));
+        Instruction id_inst  = Instruction::decode(encode_r(RISC201::OP_ADD, 7, 6, 2));
+
+        auto sig = hdu.evaluate(id_inst, nop, ma1_inst, nop, nop, false, 0);
+        std::cout << "[Test 3] Load RAW in MA1 (Memory access in progress):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_MA1=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_MA1=" << sig.hazard_ma1 << "\n\n";
+    }
+
+    // Test 4: Load RAW in MA2 (Memory access completes execution)
+    {
+        Instruction ma2_inst = Instruction::decode(encode_i(RISC201::OP_LD, 6, 0, 0x10));
+        Instruction id_inst  = Instruction::decode(encode_r(RISC201::OP_ADD, 7, 6, 2));
+
+        auto sig = hdu.evaluate(id_inst, nop, nop, ma2_inst, nop, false, 0);
+        std::cout << "[Test 4] Load RAW in MA2 (Memory execution completes):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_MA2=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_MA2=" << sig.hazard_ma2 << "\n\n";
+    }
+
+    // Test 5: Register Writeback RAW in RW stage
+    {
+        Instruction rw_inst = Instruction::decode(encode_r(RISC201::OP_ADD, 3, 4, 5));
+        Instruction id_inst = Instruction::decode(encode_r(RISC201::OP_MUL, 9, 3, 2));
+
+        auto sig = hdu.evaluate(id_inst, nop, nop, nop, rw_inst, false, 0);
+        std::cout << "[Test 5] RAW Conflict in RW (Writeback pending):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_RW=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_RW=" << sig.hazard_rw << "\n\n";
+    }
+
+    // Test 6: Store Payload dependency (st reads rd as input source)
+    {
+        Instruction ma2_inst = Instruction::decode(encode_i(RISC201::OP_LD, 2, 0, 4));[cite: 1]
+        Instruction id_inst  = Instruction::decode(encode_i(RISC201::OP_ST, 2, 3, 8));[cite: 1]
+
+        auto sig = hdu.evaluate(id_inst, nop, nop, ma2_inst, nop, false, 0);
+        std::cout << "[Test 6] Store Payload RAW (ID 'st' payload reads r2 from MA2):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_MA2=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_MA2=" << sig.hazard_ma2 << "\n\n";
+    }
+
+    // Test 7: Store Base Address dependency (st reads rs1 as address)
+    {
+        Instruction ex_inst = Instruction::decode(encode_r(RISC201::OP_ADD, 3, 1, 2));
+        Instruction id_inst = Instruction::decode(encode_i(RISC201::OP_ST, 4, 3, 0));[cite: 3]
+
+        auto sig = hdu.evaluate(id_inst, ex_inst, nop, nop, nop, false, 0);
+        std::cout << "[Test 7] Store Base RAW (ID 'st' address reads r3 from EX):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_EX=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_EX=" << sig.hazard_ex << "\n\n";
+    }
+
+    // Test 8: Subroutine Linkage (call writes r15, ret reads r15)
+    {
+        Instruction ma1_inst = Instruction::decode(encode_i(RISC201::OP_CALL, 0, 0, 0x0200));
+        Instruction id_inst  = Instruction::decode(encode_r(RISC201::OP_RET, 0, 0, 0));[cite: 1]
+
+        auto sig = hdu.evaluate(id_inst, nop, ma1_inst, nop, nop, false, 0);
+        std::cout << "[Test 8] Return Address RAW (call in MA1 writes r15, ret in ID reads r15):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_MA1=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_MA1=" << sig.hazard_ma1 << "\n\n";
+    }
+
+    // Test 9: MOVU Pure Overwrite (No False Stall)
+    {
+        Instruction ex_inst = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));[cite: 1]
+        Instruction id_inst = Instruction::decode(encode_i(RISC201::OP_MOVU, 1, 0, 0x1234));[cite: 1]
+
+        auto sig = hdu.evaluate(id_inst, ex_inst, nop, nop, nop, false, 0);
+        std::cout << "[Test 9] MOVU Overwrite (EX writes r1, ID movu overwrites r1):\n"
+                  << "  Expected: PC_Stall=0, IF_ID_Stall=0, ID_EX_Bubble=0\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble << "\n\n";
+    }
+
+    // Test 10: MOVH Pure Overwrite (No False Stall)
+    {
+        Instruction ex_inst = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));[cite: 1]
+        Instruction id_inst = Instruction::decode(encode_i(RISC201::OP_MOVH, 1, 0, 0x5678));[cite: 1]
+
+        auto sig = hdu.evaluate(id_inst, ex_inst, nop, nop, nop, false, 0);
+        std::cout << "[Test 10] MOVH Overwrite (EX writes r1, ID movh overwrites r1):\n"
+                  << "  Expected: PC_Stall=0, IF_ID_Stall=0, ID_EX_Bubble=0\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble << "\n\n";
+    }
+
+    // Test 11: FPU RAW Conflict
+    {
+        Instruction ex_inst = Instruction::decode(encode_r(RISC201::OP_FADD, 8, 9, 10));[cite: 1]
+        Instruction id_inst = Instruction::decode(encode_r(RISC201::OP_FMUL, 11, 8, 9));[cite: 1]
+
+        auto sig = hdu.evaluate(id_inst, ex_inst, nop, nop, nop, false, 0);
+        std::cout << "[Test 11] FPU RAW Conflict (EX writes r8, ID reads r8):\n"
+                  << "  Expected: PC_Stall=1, IF_ID_Stall=1, ID_EX_Bubble=1, Hazard_EX=1\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble 
+                  << ", Hazard_EX=" << sig.hazard_ex << "\n\n";
+    }
+
+    // Test 12: Zero Register r12 Immunity
+    {
+        Instruction ex_inst  = Instruction::decode(encode_r(RISC201::OP_ADD, 12, 1, 2));[cite: 1]
+        Instruction ma1_inst = Instruction::decode(encode_i(RISC201::OP_LD, 12, 0, 4));
+        Instruction id_inst  = Instruction::decode(encode_r(RISC201::OP_ADD, 3, 12, 12));
+
+        auto sig = hdu.evaluate(id_inst, ex_inst, ma1_inst, nop, nop, false, 0);
+        std::cout << "[Test 12] Zero Register r12 Immunity:\n"
+                  << "  Expected: PC_Stall=0, IF_ID_Stall=0, ID_EX_Bubble=0\n"
+                  << "  Actual:   PC_Stall=" << sig.pc_stall 
+                  << ", IF_ID_Stall=" << sig.if_id_stall 
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble << "\n\n";
+    }
+
+    // Test 13: Branch Taken in EX Overriding RAW Conflict
+    {
+        Instruction ex_inst = Instruction::decode(encode_r(RISC201::OP_ADD, 1, 2, 3));[cite: 1]
+        Instruction id_inst = Instruction::decode(encode_r(RISC201::OP_SUB, 4, 1, 5));[cite: 1]
+
+        auto sig = hdu.evaluate(id_inst, ex_inst, nop, nop, nop, true, 0x0080);
+        std::cout << "[Test 13] Branch Taken Override (EX redirects PC to 0x80):\n"
+                  << "  Expected: Branch_Taken=1, Target=0x80, IF_ID_Flush=1, ID_EX_Bubble=1, PC_Stall=0\n"
+                  << "  Actual:   Branch_Taken=" << sig.branch_taken 
+                  << ", Target=0x" << std::hex << sig.branch_pc << std::dec
+                  << ", IF_ID_Flush=" << sig.if_id_flush
+                  << ", ID_EX_Bubble=" << sig.id_ex_bubble
+                  << ", PC_Stall=" << sig.pc_stall << "\n\n";
+    }
+
+    // Test 14: Multi-Cycle Load-to-Use Trace
+    {
+        std::cout << "[Test 14] Multi-Cycle Load-to-Use Timeline (EX -> MA1 -> MA2 -> RW -> Clear):\n";
+        Instruction consumer = Instruction::decode(encode_r(RISC201::OP_ADD, 5, 1, 2));
+        Instruction producer = Instruction::decode(encode_i(RISC201::OP_LD, 1, 0, 8));
+
+        // Cycle 1: Producer in EX
+        auto s1 = hdu.evaluate(consumer, producer, nop, nop, nop, false, 0);
+        std::cout << "  Cycle 1 (LD in EX):  Expected: PC_Stall=1, Bubble=1 | Actual: PC_Stall=" << s1.pc_stall << ", Bubble=" << s1.id_ex_bubble << "\n";
+
+        // Cycle 2: Producer in MA1
+        auto s2 = hdu.evaluate(consumer, nop, producer, nop, nop, false, 0);
+        std::cout << "  Cycle 2 (LD in MA1): Expected: PC_Stall=1, Bubble=1 | Actual: PC_Stall=" << s2.pc_stall << ", Bubble=" << s2.id_ex_bubble << "\n";
+
+        // Cycle 3: Producer in MA2
+        auto s3 = hdu.evaluate(consumer, nop, nop, producer, nop, false, 0);
+        std::cout << "  Cycle 3 (LD in MA2): Expected: PC_Stall=1, Bubble=1 | Actual: PC_Stall=" << s3.pc_stall << ", Bubble=" << s3.id_ex_bubble << "\n";
+
+        // Cycle 4: Producer in RW
+        auto s4 = hdu.evaluate(consumer, nop, nop, nop, producer, false, 0);
+        std::cout << "  Cycle 4 (LD in RW):  Expected: PC_Stall=1, Bubble=1 | Actual: PC_Stall=" << s4.pc_stall << ", Bubble=" << s4.id_ex_bubble << "\n";
+
+        // Cycle 5: Producer Retired
+        auto s5 = hdu.evaluate(consumer, nop, nop, nop, nop, false, 0);
+        std::cout << "  Cycle 5 (Retired):   Expected: PC_Stall=0, Bubble=0 | Actual: PC_Stall=" << s5.pc_stall << ", Bubble=" << s5.id_ex_bubble << "\n\n";
+    }
+}
+
+int main() {
+    run_test_suite();
+    return 0;
+}
