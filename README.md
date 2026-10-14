@@ -3,7 +3,7 @@
 ### Registers (32-bit Unified File)
 - `r0-r3`: general purpose int registers
 - `r4-r7`: scratch registers (Caller-saved)
-- `r8-r11`: general purpose float registers
+- `r8-r11` or `f0-f3`: general purpose float registers
 - `r12`: zero register (Hardwired to 0)
 - `r13`: frame pointer (points to the top of the activation block)
 - `r14`: stack pointer
@@ -13,13 +13,34 @@
   - `flags.E` and `flags.GT` (1-bit)
   - `epc`: exception program counter
   - `cause`: exception cause code
+  - Registers used in FPU -
+    
+    1. For `fmul` and `fdiv` -`A_reg`, `M_reg` and `Q_reg`  
 
 ### Instruction Encoding Formats
 - **Register Format (R-Type):**
+  - 3-address type
   ```
   [6-bit opcode] [1-bit I=0] [4-bit rd] [4-bit rs1] [4-bit rs2] [13-bit padding]
   ```
+  - 2-address type
+  ```
+  [6-bit opcode] [1-bit I=0] [4-bit padding] [4-bit rs1] [4-bit rs2] [13-bit padding]
+  ``` 
+  - 1-address type
+  ```
+  [6-bit opcode] [1-bit I=0] [4-bit rd] [4-bit padding] [4-bit padding] [13-bit padding]
+  ```
 - **Immediate Format (I-Type):**
+  - 3-address type
+  ```
+  [6-bit opcode] [1-bit I=1] [4-bit rd] [4-bit rs1] [16-bit imm] [1-bit padding]
+  ```
+  - 2-address type
+  ```
+  [6-bit opcode] [1-bit I=1] [4-bit rd] [4-bit rs1] [16-bit imm] [1-bit padding]
+  ```
+  - 1-address type
   ```
   [6-bit opcode] [1-bit I=1] [4-bit rd] [4-bit rs1] [16-bit imm] [1-bit padding]
   ```
@@ -76,7 +97,7 @@
 | `ebreak` | `111110` | R | None | Breakpoint: Halts execution, drops to CLI debugger. |
 | `wfi` | `111111` | R | None | Wait for Interrupt: Pauses execution until external event. |
 
-*Note: `push` and `pop` are implemented as assembler preprocessor macros*
+*Note: `push` and `pop` are implemented as assembler preprocessor macros. Also `mov` is being implemented as `add` instruction*
 
 ### Instructions which we are not sure about : 
 1. `ebreak <address>` : now this instruction will help us in implementing interactive CLI debugger, so basically what this instruction does is that whenever our program/CPU encounters this instruction in the instruction stream, then it will halt the execution, save current PC (and maybe more things/regs/data), raise a `BREAKPOINT_EXECEPTION` (if req) and pass the control to the interactive CLI prompt so that the user can use debugging features to inspect current state of registers or of execution pipeline - implement in HARDWARE
