@@ -176,6 +176,20 @@ public:
                 case InstFormat::SYS_TYPE:
                     final_32bit += "00000000000000000000000000"; 
                     break;
+
+                case InstFormat::F_TYPE:
+                    final_32bit += "1";
+                    final_32bit += REG_MAP.at(ops[0]);
+                    {
+                        uint32_t imm21 = 0;
+                        try {
+                            imm21 = static_cast<uint32_t>(std::stoul(ops[1], nullptr, 0)) & 0x1FFFFFu;
+                        } catch (...) {
+                            imm21 = 0;
+                        }
+                        final_32bit += std::bitset<21>(imm21).to_string();
+                    }
+                    break;
             }
 
             mach_code.push_back(final_32bit);

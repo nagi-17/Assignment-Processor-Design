@@ -30,11 +30,12 @@ inline void appendControlSignals(std::vector<DebugField>& fields,
     static const char* names[CONTROL_WORD_WIDTH] = {
         "IS_ST", "IS_LD", "IS_BEQ", "IS_BGT", "IS_BLT", "IS_BNE",
         "IS_RET", "IS_IMMEDIATE", "IS_WB", "IS_UBRANCH", "IS_CALL",
+        "IS_MOVU", "IS_MOVH",
         "IS_ADD", "IS_SUB", "IS_CMP", "IS_MUL", "IS_DIV", "IS_MOD",
-        "IS_LSL", "IS_LSR", "IS_ASR", "IS_OR", "IS_AND", "IS_NOT",
-        "IS_XOR", "IS_WFI", "IS_ERET", "IS_CSRR", "IS_CSRW",
-        "IS_SYSCALL", "IS_EBREAK", "IS_FLOAT", "IS_FADD", "IS_FSUB",
-        "IS_FMUL", "IS_FDIV", "IS_FCMP", "IS_CLEAR"
+        "IS_LSL", "IS_LSR", "IS_ASR", "IS_OR", "IS_AND", "IS_NOT", "IS_XOR",
+        "IS_WFI", "IS_ERET", "IS_CSRR", "IS_CSRW", "IS_SYSCALL", "IS_EBREAK",
+        "IS_FLOAT", "IS_FADD", "IS_FSUB", "IS_FMUL", "IS_FDIV", "IS_FCMP",
+        "IS_CLEAR", "IS_CHK"
     };
 
     for (std::size_t i = 0; i < CONTROL_WORD_WIDTH; ++i) {
