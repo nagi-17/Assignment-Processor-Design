@@ -1,0 +1,20 @@
+CXX ?= g++
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wpedantic -O2
+INCLUDES := -Isrc/headers -Isrc/disassembler
+BUILD_DIR := build/disassembler
+
+.PHONY: all test clean
+all: $(BUILD_DIR)/disassembler
+
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+$(BUILD_DIR)/disassembler: src/disassembler/main_disassembler.cpp src/disassembler/disassembler.cpp src/disassembler/disassembler.hpp src/headers/isa_config.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) src/disassembler/main_disassembler.cpp src/disassembler/disassembler.cpp -o $@
+
+test: | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) tests/disassembler_tests.cpp src/disassembler/disassembler.cpp -o $(BUILD_DIR)/disassembler_tests
+	./$(BUILD_DIR)/disassembler_tests
+
+clean:
+	rm -rf $(BUILD_DIR)
