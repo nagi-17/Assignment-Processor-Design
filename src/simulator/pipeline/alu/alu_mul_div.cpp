@@ -1,53 +1,5 @@
-#include <cstdint>
-#include <vector>
-#include <iostream>
+#include "alu.hpp"
 
-struct ALUResult
-{
-    uint32_t res;
-    bool Z;
-    bool N;
-    bool C;
-    bool V;
-};
-
-class ALU
-{
-public:
-    enum ALUOp : uint8_t
-    {
-        OP_ADD,
-        OP_SUB,
-        OP_MUL,
-        OP_DIV,
-        OP_MOD,
-        OP_CMP,
-        OP_LD,
-        OP_ST,
-        OP_MOV,
-        OP_MOVU,
-        OP_MOVH,
-        OP_AND,
-        OP_OR,
-        OP_NOT,
-        OP_XOR,
-        OP_LSL,
-        OP_ASR,
-        OP_LSR,
-        OP_CHK
-    };
-
-    ALUResult execute(uint32_t operand1, uint32_t operand2, ALUOp control_signal);
-
-private:
-    ALUResult koggeStoneAdder(uint32_t a, uint32_t b, int carry_in);
-    ALUResult bitwiseLogic(uint32_t a, uint32_t b, ALUOp op);
-    ALUResult barrelShifter(uint32_t data, uint32_t shift_amount, ALUOp op);
-    void carrySaveAdder(uint32_t a, uint32_t b, uint32_t c,
-                        uint32_t &sum, uint32_t &carry);
-    ALUResult boothWallaceKoggeMultiplier(uint32_t multiplicand, uint32_t multiplier);
-    ALUResult nonRestoringDivider(uint32_t dividend, uint32_t divisor, ALUOp op);
-};
 void ALU::carrySaveAdder(uint32_t a, uint32_t b, uint32_t c,
                              uint32_t &sum, uint32_t &carry)
 {
@@ -150,11 +102,46 @@ ALUResult ALU::boothWallaceKoggeMultiplier(uint32_t multiplicand,
     return temp;
 }
 
-ALUResult ALU::nonRestoringDivider(uint32_t dividend,
-                                   uint32_t divisor,
-                                   ALUOp op)
+// Leading Zero Counter: binary search tree using bitwise OR (returns 32 for x == 0)
+uint32_t ALU::countLeadingZeros(uint32_t x)
+{
+    if (x == 0)
+        return 32;
+    uint32_t n = 0;
+    if ((x & 0xFFFF0000U) == 0)
+    {
+        n |= 16U;
+        x <<= 16;
+    }
+    if ((x & 0xFF000000U) == 0)
+    {
+        n |= 8U;
+        x <<= 8;
+    }
+    if ((x & 0xF0000000U) == 0)
+    {
+        n |= 4U;
+        x <<= 4;
+    }
+    if ((x & 0xC0000000U) == 0)
+    {
+        n |= 2U;
+        x <<= 2;
+    }
+    if ((x & 0x80000000U) == 0)
+    {
+        n |= 1U;
+    }
+    return n;
+}
+
+// Unsigned radix-4 divider with early termination.
+// Latency: ceil(bit_length(quotient)/2) iterations, worst case 16, 0 when dividend < divisor.
+// Divide by zero returns res = 0 with V = 1 (same behaviour as before).
+ALUResult ALU::radix4Divider(uint32_t dividend, uint32_t divisor, ALUOp op)
 {
     ALUResult temp = {0, false, false, false, false};
+    div_iterations = 0;
 
     if (divisor == 0)
     {
@@ -162,38 +149,86 @@ ALUResult ALU::nonRestoringDivider(uint32_t dividend,
         return temp;
     }
 
-    int64_t A = 0;
-    int64_t M = divisor;
-    uint32_t Q = dividend;
+    uint32_t quotient = 0;
+    uint32_t remainder = dividend;
 
-    // 32 iterations
-    for (int i = 0; i < 32; i++)
+    // dividend >= divisor  <=>  carry out of dividend + ~divisor + 1
+    bool ge = koggeStoneAdder(dividend, ~divisor, 1).C;
+
+    if (ge)
     {
-        // Shift A left and bring in MSB of Q
-        A = (A << 1) | ((Q >> 31) & 1);
+        // ---- Alignment: find the bit length of the quotient ----
+        // t = nd - nm = clz(divisor) - clz(dividend)   (0..31)
+        uint32_t clzM = countLeadingZeros(divisor);
+        uint32_t clzD = countLeadingZeros(dividend);
+        uint32_t t = koggeStoneAdder(clzM, ~clzD, 1).res;
 
-        // Shift Q left
-        Q <<= 1;
+        // top = dividend aligned to the divisor's bit length; quotient has t or t+1 bits
+        uint32_t top = dividend >> t;
+        bool topGeM = koggeStoneAdder(top, ~divisor, 1).C;
+        uint32_t qbits = koggeStoneAdder(t, 0, topGeM ? 1 : 0).res; // bit length of quotient
 
-        // Non-restoring step
-        if (A >= 0)
-            A -= M;
-        else
-            A += M;
+        // s = qbits rounded up to an even number (radix 4 consumes 2 bits per iteration)
+        uint32_t s = koggeStoneAdder(qbits, 1, 0).res & ~1U;
+        uint32_t iterations = s >> 1;
+        div_iterations = iterations;
 
-        // Determine next quotient bit
-        if (A >= 0)
-            Q |= 1;
+        // ---- Multiples of the divisor (33/34-bit values) ----
+        uint64_t M1 = divisor;
+        uint64_t M2 = M1 << 1;
+        uint64_t M3 = koggeStoneAdder64(M1, M2, 0).sum;
+
+        // ---- Digit recurrence ----
+        uint64_t R = static_cast<uint64_t>(dividend) >> s; // < divisor, s <= 32
+        uint32_t Q = 0;
+
+        for (uint32_t i = iterations; i-- > 0;)
+        {
+            uint64_t bits = (dividend >> (2 * i)) & 0x3;
+            uint64_t R4 = (R << 2) | bits;
+
+            // Three parallel subtractors R4 - kM; carry out = 1  <=>  R4 >= kM
+            Adder64Result d1 = koggeStoneAdder64(R4, ~M1, 1);
+            Adder64Result d2 = koggeStoneAdder64(R4, ~M2, 1);
+            Adder64Result d3 = koggeStoneAdder64(R4, ~M3, 1);
+
+            uint32_t digit;
+            if (d3.cout)
+            {
+                digit = 3;
+                R = d3.sum;
+            }
+            else if (d2.cout)
+            {
+                digit = 2;
+                R = d2.sum;
+            }
+            else if (d1.cout)
+            {
+                digit = 1;
+                R = d1.sum;
+            }
+            else
+            {
+                digit = 0;
+                R = R4;
+            }
+
+            Q = (Q << 2) | digit;
+        }
+
+        quotient = Q;
+        remainder = static_cast<uint32_t>(R);
+    }
+    else
+    {
+        quotient = 0; // dividend < divisor: remainder is the dividend itself
     }
 
-    // Final restoration
-    if (A < 0)
-        A += M;
-
     if (op == OP_DIV)
-        temp.res = Q;
+        temp.res = quotient;
     else
-        temp.res = static_cast<uint32_t>(A);
+        temp.res = remainder;
 
     temp.Z = (temp.res == 0);
     temp.N = (temp.res >> 31) & 1;

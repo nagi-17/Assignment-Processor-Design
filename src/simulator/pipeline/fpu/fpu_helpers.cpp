@@ -1,132 +1,193 @@
 #include "fpu.hpp"
 
-// barrel Shift Left Unit
-uint32_t FPU::barrelShiftLeft(uint32_t data, uint32_t shift_amount) {
+// Main entry point: decodes operation, executes, and sets status flags
+FPUResult FPU::execute(uint32_t operand1, uint32_t operand2, FPUOp control_signal)
+{
+    FPUResult out = {0, false, false, false, false};
+
+    switch (control_signal)
+    {
+    case OP_FADD:
+        out.res = executeAddSub(operand1, operand2, false);
+        break;
+    case OP_FSUB:
+        out.res = executeAddSub(operand1, operand2, true);
+        break;
+    case OP_FMUL:
+        out.res = executeMul(operand1, operand2);
+        break;
+    case OP_FDIV:
+        out.res = executeDiv(operand1, operand2);
+        break;
+    case OP_FCMP:
+        executeCmp(operand1, operand2, out);
+        return out; // CMP updates flags directly and returns early
+    default:
+        break;
+    }
+
+    // Unpack exponent and mantissa to determine output flags
+    uint32_t exp = (out.res >> 23) & 0xFFU;
+    uint32_t mant = out.res & 0x7FFFFFU;
+
+    out.Z = (exp == 0 && mant == 0);
+    out.N = (out.res >> 31) & 1U;
+    out.V = (exp == 255 && mant == 0);
+    out.NaN = (exp == 255 && mant != 0);
+
+    return out;
+}
+
+// ===== Bitwise / structural primitives =====
+
+// Barrel shifter: shifts left in 5 parallel stages (1, 2, 4, 8, 16 bits)
+uint32_t FPU::barrelShiftLeft(uint32_t data, uint32_t shift_amount) const
+{
     if (shift_amount >= 32)
         return 0;
-
     uint32_t result = data;
-
-    if (shift_amount & 0b00001) result = result << 1;
-    if (shift_amount & 0b00010) result = result << 2;
-    if (shift_amount & 0b00100) result = result << 4;
-    if (shift_amount & 0b01000) result = result << 8;
-    if (shift_amount & 0b10000) result = result << 16;
-
+    if (shift_amount & 0b00001U)
+        result <<= 1;
+    if (shift_amount & 0b00010U)
+        result <<= 2;
+    if (shift_amount & 0b00100U)
+        result <<= 4;
+    if (shift_amount & 0b01000U)
+        result <<= 8;
+    if (shift_amount & 0b10000U)
+        result <<= 16;
     return result;
 }
 
-// barrel Shift Right Unit
-uint32_t FPU::barrelShiftRight(uint32_t data, uint32_t shift_amount) {
-    if (shift_amount >= 32) return 0;
-
+// Barrel shifter: shifts right in 5 parallel stages (1, 2, 4, 8, 16 bits)
+uint32_t FPU::barrelShiftRight(uint32_t data, uint32_t shift_amount) const
+{
+    if (shift_amount >= 32)
+        return 0;
     uint32_t result = data;
-
-    if (shift_amount & 0b00001) result = result >> 1;
-    if (shift_amount & 0b00010) result = result >> 2;
-    if (shift_amount & 0b00100) result = result >> 4;
-    if (shift_amount & 0b01000) result = result >> 8;
-    if (shift_amount & 0b10000) result = result >> 16;
-
+    if (shift_amount & 0b00001U)
+        result >>= 1;
+    if (shift_amount & 0b00010U)
+        result >>= 2;
+    if (shift_amount & 0b00100U)
+        result >>= 4;
+    if (shift_amount & 0b01000U)
+        result >>= 8;
+    if (shift_amount & 0b10000U)
+        result >>= 16;
     return result;
 }
 
-// CLA Adder ( koggeStoneAdder )
-uint32_t FPU::hardware_adder(uint32_t A, uint32_t B, bool Cin) {
-    GPBlock tree[6][32]; 
-    
-    // Stage 1 : Creating GP Tree
-    
-    // Level 0
-    for(int i = 0; i < 32; i++){
-        bool a_bit = (A >> i) & 1; // extracting i-th bit of A
-        bool b_bit = (B >> i) & 1; // extracting i-th bit of B
-        tree[0][i].g = a_bit & b_bit; // G = A & B
-        tree[0][i].p = a_bit ^ b_bit; // P = A ^ B
-    }
+// Kogge-Stone Adder: parallel-prefix adder calculating all carries in 5 stages
+AdderResult32 FPU::koggeStoneAdder32(uint32_t a, uint32_t b, bool carry_in) const
+{
+    uint32_t G = a & b; // Generate bit
+    uint32_t P = a ^ b; // Propagate bit
+    uint32_t cin_mask = carry_in ? 1U : 0U;
+    G |= (P & cin_mask);
 
-    // Levels 1 to 5
-    for (int L = 1; L <= 5; L++) { // L = level
-        int block_num = 32 >> L; 
-        for (int i = 0; i < block_num; i++) {
-            GPBlock right = tree[L-1][2*i];     // Lower bits (1 to m)
-            GPBlock left  = tree[L-1][2*i + 1]; // Upper bits (m+1 to n)
-            
-            // G_out = G_{m+1,n} | P_{m+1,n} & G_{1,m}
-            tree[L][i].g = left.g | (left.p & right.g);
-            
-            // P_out = P_{m+1,n} & P_{1,m}
-            tree[L][i].p = left.p & right.p;
-        }
-    }
+    // 5-stage carry generation tree (O(log N) depth, zero loops)
+    G |= (P & (G << 1));
+    P &= (P << 1);
+    G |= (P & (G << 2));
+    P &= (P << 2);
+    G |= (P & (G << 4));
+    P &= (P << 4);
+    G |= (P & (G << 8));
+    P &= (P << 8);
+    G |= (P & (G << 16));
 
-    // Stage 2 : Carry Propagation 
-    bool C[6][32] = {0}; // array to store C of each block
-    C[5][0] = Cin;
+    uint32_t carries = (G << 1) | cin_mask;
+    uint32_t sum = (a ^ b) ^ carries;
+    bool cout = (G >> 31) & 1U;
 
-    // Propagate carries top-down to lower levels
-    for(int L = 5; L >= 1; L--) {
-        int block_num = 32 >> L;
-        for(int i = 0; i < block_num; i++) {
-            GPBlock right = tree[L-1][2*i];
-            
-            // Right child receives the same input carry as its parent block
-            C[L-1][2*i] = C[L][i];
-            
-            // Left child receives the output carry of the right child:
-            // C_out = G | P & C_in
-            C[L-1][2*i + 1] = right.g | (right.p & C[L][i]);
-        }
-    }
-
-    // final result
-    uint32_t result = 0;
-    
-    // Level 0 contain a set of 2-bit ripple carry adders that compute the result bits using the correct input carry from Level 1
-    for (int i = 0; i < 16; i++) {
-        // Carry-in for this specific 2-bit block
-        bool cin_block = C[1][i];
-
-        // Bit 0 of the 2-bit RC Adder
-        bool a0 = (A >> (2*i)) & 1;
-        bool b0 = (B >> (2*i)) & 1;
-        bool sum0 = a0 ^ b0 ^ cin_block;
-
-        // carry from first adder of 2-bit adder
-        bool cout0 = (a0 & b0) | ((a0 ^ b0) & cin_block);
-
-        // Bit 1 of the 2-bit RC Adder
-        bool a1 = (A >> (2*i + 1)) & 1;
-        bool b1 = (B >> (2*i + 1)) & 1;
-        bool sum1 = a1 ^ b1 ^ cout0;
-
-        // making result (using 1U to prevent signed bit-shift overflow warnings)
-        if(sum0) result |= (1U << (2*i));
-        if(sum1) result |= (1U << (2*i + 1));
-    }
-
-    return result;
+    return {sum, cout};
 }
 
-// Rounding and Normalizing
-uint32_t FPU::roundAndPack(uint32_t sign, int32_t exp, uint32_t mant, bool G, bool R, bool S) {
-    // G - 1st discarded bit
-    // R - 2nd discarded bit
-    // S - OR of all remaining bits
+// 3:2 Carry-Save Adder: compresses 3 inputs into sum and carry vectors
+void FPU::carrySaveAdder(uint32_t a, uint32_t b, uint32_t c,
+                    uint32_t &sum, uint32_t &carry) const
+{
+    sum = a ^ b ^ c;
+    carry = ((a & b) | (b & c) | (c & a)) << 1;
+}
 
-    // Round to nearest, ties to even
-    if (G && (R || S || (mant & 1))) {
-        mant = hardware_adder(mant, 1, false); 
-        if (mant & (1 << 24)) { // Overflowed the 24-bit mantissa width 
+// Leading Zero Counter: binary search tree using bitwise OR (no '+' used)
+uint32_t FPU::countLeadingZeros32(uint32_t x) const
+{
+    if (x == 0)
+        return 32;
+    uint32_t n = 0;
+    if ((x & 0xFFFF0000U) == 0)
+    {
+        n |= 16U;
+        x <<= 16;
+    }
+    if ((x & 0xFF000000U) == 0)
+    {
+        n |= 8U;
+        x <<= 8;
+    }
+    if ((x & 0xF0000000U) == 0)
+    {
+        n |= 4U;
+        x <<= 4;
+    }
+    if ((x & 0xC0000000U) == 0)
+    {
+        n |= 2U;
+        x <<= 2;
+    }
+    if ((x & 0x80000000U) == 0)
+    {
+        n |= 1U;
+    }
+    return n;
+}
+
+// ===== Unpack / round / pack =====
+
+// Unpacks 32-bit float into sign, biased exponent, and 24-bit hidden-bit mantissa
+FPU::FloatData::FloatData(uint32_t val)
+{
+    sign = (val >> 31) & 1U;
+    exp = static_cast<int32_t>((val >> 23) & 0xFFU);
+    mant = val & 0x7FFFFFU;
+
+    if (exp == 0)
+        mant = 0; // Flush denormal numbers to 0
+
+    isZero = (exp == 0 && mant == 0);
+    isInf = (exp == 255 && mant == 0);
+    isNaN = (exp == 255 && mant != 0);
+
+    // Restore the implicit leading 1 for normalized numbers (1.mantissa)
+    if (!isZero && !isInf && !isNaN)
+        mant |= 0x800000U;
+}
+
+// Rounds result using IEEE-754 round-to-nearest-even and packs back into 32 bits
+uint32_t FPU::roundAndPack(uint32_t sign, int32_t exp, uint32_t mant,
+                      bool G, bool R, bool S) const
+{
+    // Nearest-even rounding condition using Guard (G), Round (R), and Sticky (S) bits
+    if (G && (R || S || (mant & 1U)))
+    {
+        mant = koggeStoneAdder32(mant, 1U, false).sum;
+        if (mant & (1U << 24))
+        { // Overflow past 24 bits: shift right and bump exponent
             mant >>= 1;
-            exp = hardware_adder(exp, 1, false); 
+            exp = static_cast<int32_t>(koggeStoneAdder32(exp, 1U, false).sum);
         }
     }
-    
-    mant &= 0x7FFFFF; // remove the implicit leading 1
 
-    if (exp >= 255) return (sign << 31) | INF_VAL; // Overflow
-    if (exp <= 0) return (sign << 31);             // Underflow
+    mant &= 0x7FFFFFU; // Strip the implicit leading 1 bit
 
-    return (sign << 31) | (exp << 23) | mant;
+    // Handle overflow and underflow boundaries
+    if (exp >= 255)
+        return (sign << 31) | IEEE754_INFINITY_MASK;
+    if (exp <= 0)
+        return (sign << 31);
+
+    return (sign << 31) | (static_cast<uint32_t>(exp) << 23) | mant;
 }
