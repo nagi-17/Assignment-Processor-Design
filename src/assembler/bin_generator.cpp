@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <stdexcept>
 #include <stdint.h>
 #include "../headers/isa_config.hpp" 
 
@@ -19,6 +20,36 @@ private:
             }
         }
         return binary;
+    }
+
+    // Two's-complement binary string of `bits` bits (MSB first).
+    std::string signed_to_binary(int val, int bits) {
+        std::string binary = "";
+        for (int i = bits - 1; i >= 0; i--) {
+            binary += ((val >> i) & 1) ? "1" : "0";
+        }
+        return binary;
+    }
+
+    // Resolve a branch/call operand into a PC-relative BYTE offset.
+    // The operand may be a literal offset ("-16"), a label ("loop") or a
+    // label reference carrying a trailing colon ("loop:").
+    int resolve_branch_offset(const std::string& operand, uint32_t current_address,
+                              const std::unordered_map<std::string, uint32_t>& symbol_table) {
+        std::string symbol = operand;
+        if (!symbol.empty() && symbol.back() == ':') {
+            symbol.pop_back();
+        }
+
+        if (is_numeric(symbol)) {
+            return std::stoi(symbol);
+        }
+
+        auto it = symbol_table.find(symbol);
+        if (it == symbol_table.end()) {
+            throw std::runtime_error("undefined label '" + symbol + "'");
+        }
+        return static_cast<int>(it->second) - static_cast<int>(current_address);
     }
 
     std::vector<std::string> split_operands(std::string str) {
@@ -157,21 +188,22 @@ public:
                     final_32bit += "0";
                     break;
 
-                case InstFormat::I_TYPE_1: 
-                    final_32bit += "1";
-                    final_32bit += "0000";                  
-                    
-                    if (mnemonic == "b" || mnemonic == "call") {
-                        final_32bit += "0000"; 
-                        int offset = symbol_table.at(ops[0]) - current_address;
-                        final_32bit += integer_to_16bit_binary(std::to_string(offset));
-                    } else {
-                        final_32bit += REG_MAP.at(ops[0]); 
-                        int offset = symbol_table.at(ops[2]) - current_address;
-                        final_32bit += integer_to_16bit_binary(std::to_string(offset));
+                case InstFormat::I_TYPE_1: {
+                    // Branches and calls store a 25-bit PC-relative BYTE offset
+                    // in bits [24:0]. The decoder sign-extends 25 bits and then
+                    // divides by 4 to convert into instruction-index units.
+                    // The target is always the final operand, so both "blt label"
+                    // and "beq rs1, rs2, label" encode the same way.
+                    if (ops.empty()) {
+                        throw std::runtime_error(
+                            "branch/call instruction '" + mnemonic + "' has no target operand");
                     }
-                    final_32bit += "0";
+                    const int offset =
+                        resolve_branch_offset(ops.back(), current_address, symbol_table);
+                    final_32bit += "1";
+                    final_32bit += signed_to_binary(offset, 25);
                     break;
+                }
 
                 case InstFormat::SYS_TYPE:
                     final_32bit += "00000000000000000000000000"; 
