@@ -35,51 +35,95 @@ private:
         return line.substr(0, space_pos);
     }
 
-    // implementing mov using add instruction
-    void handle_mov(const std::string& line, std::vector<std::string>& output) {
+    // Helper to extract two operands whether separated by comma or whitespace
+    bool parse_two_operands(const std::string& line, std::string& op1, std::string& op2) {
         size_t space_pos = line.find_first_of(" \t");
+        if (space_pos == std::string::npos) return false;
         std::string operands = line.substr(space_pos + 1);
-        
+
+        size_t start = operands.find_first_not_of(" \t");
+        if (start == std::string::npos) return false;
+        operands = operands.substr(start);
+
         size_t comma_pos = operands.find(',');
         if (comma_pos != std::string::npos) {
-            std::string rd = operands.substr(0, comma_pos);
-            
-            size_t rs_start = operands.find_first_not_of(" \t", comma_pos + 1);
-            std::string rs = operands.substr(rs_start);
-            
-            output.push_back("add " + rd + ", " + rs + ", r12");
+            op1 = operands.substr(0, comma_pos);
+            size_t second_start = operands.find_first_not_of(" \t", comma_pos + 1);
+            if (second_start == std::string::npos) return false;
+            op2 = operands.substr(second_start);
+        } else {
+            size_t sep = operands.find_first_of(" \t");
+            if (sep == std::string::npos) return false;
+            op1 = operands.substr(0, sep);
+            size_t second_start = operands.find_first_not_of(" \t", sep + 1);
+            if (second_start == std::string::npos) return false;
+            op2 = operands.substr(second_start);
+        }
+
+        size_t last1 = op1.find_last_not_of(" \t\r");
+        if (last1 != std::string::npos) op1 = op1.substr(0, last1 + 1);
+        size_t last2 = op2.find_last_not_of(" \t\r");
+        if (last2 != std::string::npos) op2 = op2.substr(0, last2 + 1);
+
+        return !op1.empty() && !op2.empty();
+    }
+
+    bool is_number_str(const std::string& s) {
+        if (s.empty()) return false;
+        size_t start = (s[0] == '-' || s[0] == '+') ? 1 : 0;
+        if (start == 1 && s.size() == 1) return false;
+        if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+            for (size_t i = 2; i < s.size(); ++i) {
+                if (!isxdigit(s[i])) return false;
+            }
+            return true;
+        }
+        for (size_t i = start; i < s.size(); ++i) {
+            if (!isdigit(s[i])) return false;
+        }
+        return true;
+    }
+
+    // implementing mov using add instruction
+    // mov rd, rs       -> add rd, rs, r12   (register copy)
+    // mov rd, imm      -> add rd, r12, imm  (load immediate; r12 is hardwired zero)
+    void handle_mov(const std::string& line, std::vector<std::string>& output) {
+        std::string rd, src;
+        if (!parse_two_operands(line, rd, src)) {
+            output.push_back(line);
+            return;
+        }
+
+        if (is_number_str(src)) {
+            output.push_back("add " + rd + ", r12, " + src);
+        } else {
+            output.push_back("add " + rd + ", " + src + ", r12");
         }
     }
 
     // implementing fmov using movu and movh to load 32-bit IEEE-754 float
     void handle_fmov(const std::string& line, std::vector<std::string>& output) {
-        size_t space_pos = line.find_first_of(" \t");
-        std::string operands = line.substr(space_pos + 1);
-        
-        size_t comma_pos = operands.find(',');
-        if (comma_pos != std::string::npos) {
-            std::string rd = operands.substr(0, comma_pos);
-            
-            size_t imm_start = operands.find_first_not_of(" \t", comma_pos + 1);
-            std::string float_str = operands.substr(imm_start);
-            
-            // 1. Convert string to float
+        std::string rd, float_str;
+        if (!parse_two_operands(line, rd, float_str)) {
+            output.push_back(line);
+            return;
+        }
+
+        try {
             float f_val = std::stof(float_str);
-            
-            // 2. Use a union to extract raw IEEE-754 bits
             union {
                 float f;
                 uint32_t i;
             } ieee;
             ieee.f = f_val;
-            
-            // 3. Mask out the upper and lower 16 bits
+
             uint16_t upper_half = (ieee.i >> 16) & 0xFFFF;
             uint16_t lower_half = ieee.i & 0xFFFF;
-            
-            // 4. Expand into hardware instructions
+
             output.push_back("movu " + rd + ", " + std::to_string(upper_half));
             output.push_back("movh " + rd + ", " + std::to_string(lower_half));
+        } catch (...) {
+            output.push_back(line);
         }
     }
 

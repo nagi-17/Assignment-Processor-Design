@@ -60,6 +60,7 @@ public:
         ex_ma1_.reset();
         ma1_ma2_.reset();
         ma2_wb_.reset();
+        execute_.reset();
         rf_.reset();
         csu_.reset();
         resetMemorySystem();
@@ -74,6 +75,7 @@ public:
         pending_status_ = StatusInputs{};
         m1_hit_saved_ = true;
         ex_inst_ = Instruction::make_nop();
+        ex_next_inst_ = Instruction::make_nop();
         ma1_inst_ = Instruction::make_nop();
         ma2_inst_ = Instruction::make_nop();
         rw_inst_ = Instruction::make_nop();
@@ -87,6 +89,11 @@ public:
         // ---- 0. Decode the instruction in IF/ID for the HDU ----
         Instruction id_inst = if_id_.is_valid ? Instruction::decode(if_id_.ir) : Instruction::make_nop();
 
+        // Multi-cycle EX tracking: `ex_busy` means a long-latency op already owns
+        // EX (from a previous cycle); `will_be_busy` means one captures EX now.
+        bool ex_busy      = execute_.isBusy();
+        bool will_be_busy = !ex_busy && execute_.latency(id_ex_) > 1;
+
         // ---- 1. CSU clock ------------------------------------------------
         StatusSignals ss = csu_.clockNext(pending_status_);
         last_status_ = ss;
@@ -95,7 +102,7 @@ public:
         // ---- 2. HDU evaluate --------------------------------------------
         HazardControlSignals hcs = hdu_.evaluate(
             id_inst, ex_inst_, ma1_inst_, ma2_inst_, rw_inst_,
-            last_ex_out_.branch_taken, last_ex_out_.branch_target);
+            last_ex_out_.branch_taken, last_ex_out_.branch_target, ex_busy);
 
         // ---- 3. WB stage ------------------------------------------------
         if (ma2_wb_.is_valid) {
@@ -127,16 +134,35 @@ public:
         pending_status_ = ex_out.status_in;
         last_ex_out_    = ex_out;
 
-        // Shift instruction trackers for HDU next cycle
+        // Shift downstream instruction trackers for HDU next cycle. These follow
+        // their latches (already updated above); the EX tracker is handled after
+        // the ID stage so it can read the post-decode ID/EX latch.
         rw_inst_  = (!ma2_wb_.is_valid) ? Instruction::make_nop() : ma2_inst_;
         ma2_inst_ = (!ma1_ma2_.is_valid) ? Instruction::make_nop() : ma1_inst_;
         ma1_inst_ = (!ex_ma1_.is_valid) ? Instruction::make_nop() : ex_inst_;
-        ex_inst_  = (hcs.id_ex_bubble || !id_ex_.is_valid) ? Instruction::make_nop() : id_inst;
 
         // ---- 7. ID stage ------------------------------------------------
+        // Hold ID/EX while the multi-cycle unit is busy (the capture cycle still
+        // decodes, replacing the ID/EX latch so the op is not re-executed later).
         bool id_stall = hcs.if_id_stall || hcs.id_ex_bubble;
         bool id_flush = hcs.if_id_flush;
-        decode_.clockNext(if_id_, id_ex_, rf_.getAll(), mcu_, id_stall, id_flush);
+        if (!ex_busy)
+            decode_.clockNext(if_id_, id_ex_, rf_.getAll(), mcu_, id_stall, id_flush);
+
+        // EX tracker = instruction that will occupy EX next cycle.
+        //  * while a multi-cycle op owns EX, the tracker stays pinned to that op;
+        //  * on its capture cycle the waiting ID/EX instruction is remembered;
+        //  * on the final cycle the waiting instruction takes over the tracker.
+        if (ex_busy) {
+            if (!execute_.isBusy()) {
+                ex_inst_ = ex_next_inst_;
+                ex_next_inst_ = Instruction::make_nop();
+            }
+        } else if (will_be_busy) {
+            ex_next_inst_ = (!id_ex_.is_valid) ? Instruction::make_nop() : id_inst;
+        } else {
+            ex_inst_ = (!id_ex_.is_valid) ? Instruction::make_nop() : id_inst;
+        }
 
         // ---- 8. IF stage ------------------------------------------------
         bool branch_taken   = ex_out.branch_taken || hcs.branch_taken;
@@ -154,7 +180,7 @@ public:
 
         // ---- 10. Halt / end-of-program detection ------------------------
         if (!if_id_.is_valid && !id_ex_.is_valid && !ex_ma1_.is_valid &&
-            !ma1_ma2_.is_valid && !ma2_wb_.is_valid &&
+            !ma1_ma2_.is_valid && !ma2_wb_.is_valid && !execute_.isBusy() &&
             fetch_.getPC() >= imem_.size()) {
             halted_     = true;
             stopped_    = true;
@@ -216,6 +242,9 @@ public:
     uint64_t totalCycles()        const { return total_cycles_; }
     uint64_t stallCycles()        const { return stall_cycles_; }
     uint64_t instructionsRetired() const { return instructions_retired_; }
+    double   clockPeriodNs()      const { return CLOCK_PERIOD_NS; }
+
+    static constexpr double CLOCK_PERIOD_NS = 1.5;
 
 private:
     InstructionMemory          imem_;
@@ -242,6 +271,7 @@ private:
     bool          m1_hit_saved_{true};
 
     Instruction   ex_inst_{};
+    Instruction   ex_next_inst_{};   // ID/EX instruction waiting behind a multi-cycle op
     Instruction   ma1_inst_{};
     Instruction   ma2_inst_{};
     Instruction   rw_inst_{};

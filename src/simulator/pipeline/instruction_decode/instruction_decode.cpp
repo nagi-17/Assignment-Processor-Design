@@ -11,13 +11,13 @@ namespace {
 //   [24:21] rd
 //   [20:17] rs1
 //   [16:13] rs2                       (R-format)
-//   [16:0]  immediate (17 bits)       (I-format)
+//   [16:1]  immediate (16 bits)       (I-format, bit 0 is padding)
 //   [24:0]  branch / call offset (25 bits)
-// CHANGE THESE if your assembler encodes fields differently.
 constexpr unsigned kRdShift  = 21;
 constexpr unsigned kRs1Shift = 17;
 constexpr unsigned kRs2Shift = 13;
-constexpr unsigned kImmBits    = 17;
+constexpr unsigned kImmShift   = 1;
+constexpr unsigned kImmBits    = 16;
 constexpr unsigned kBranchBits = 25;
 
 // Assembler emits branch offsets in bytes (divisible by 4)? Then convert to
@@ -58,10 +58,11 @@ uint32_t buildImmediate(uint32_t ir, const ControlWord& cw) {
         }
         return off;
     }
-    if (has(cw, Signal::IS_MOVH)) return (ir & 0xFFFFu) << 16;   // upper half
-    if (has(cw, Signal::IS_MOVU)) return ir & 0xFFFFu;           // zero-extend
+    uint32_t imm16 = (ir >> kImmShift) & 0xFFFFu;
+    if (has(cw, Signal::IS_MOVH)) return imm16 << 16;           // upper half
+    if (has(cw, Signal::IS_MOVU)) return imm16;                 // zero-extend
     if (has(cw, Signal::IS_CSRR) || has(cw, Signal::IS_CSRW)) {
-        return ir & 0xFFFFu;                                     // CSR index
+        return imm16;                                           // CSR index
     }
     // fmov (F-TYPE): IS_FLOAT + IS_WB, no FADD/FSUB/FMUL/FDIV/FCMP
     // The immediate is 21 bits embedded directly in the instruction.
@@ -71,7 +72,7 @@ uint32_t buildImmediate(uint32_t ir, const ControlWord& cw) {
         !has(cw, Signal::IS_FCMP)) {
         return ir & 0x1FFFFFu;                                   // 21-bit fmov immediate
     }
-    return signExtend(ir, kImmBits);                             // default
+    return signExtend(ir >> kImmShift, kImmBits);               // default 16-bit signed immediate
 }
 
 } // namespace

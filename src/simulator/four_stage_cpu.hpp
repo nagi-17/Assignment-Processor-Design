@@ -70,6 +70,7 @@ public:
         if_id_.reset();
         id_ex_.reset();
         ex_mwb_.reset();
+        execute_.reset();
         rf_.reset();
         csu_.reset();
         resetMemorySystem();
@@ -80,6 +81,11 @@ public:
         stopped_  = false;
         stop_reason_ = DebugStopReason::None;
         last_status_ = StatusSignals{};
+        last_ex_out_ = ExOut{};
+        pending_status_ = StatusInputs{};
+        id_ex_inst_   = Instruction::make_nop();
+        ex_mwb_inst_  = Instruction::make_nop();
+        ex_next_inst_ = Instruction::make_nop();
     }
 
     // ----- DebuggerTarget interface ----------------------------------------
@@ -90,6 +96,11 @@ public:
         // ---- 0. Decode the instruction currently in IF/ID for the HDU ----
         Instruction id_inst = Instruction::decode(if_id_.ir);
         if (!if_id_.is_valid) id_inst = Instruction::make_nop();
+
+        // Multi-cycle EX tracking: `ex_busy` means a long-latency op already owns
+        // EX (from a previous cycle); `will_be_busy` means one captures EX now.
+        bool ex_busy      = execute_.isBusy();
+        bool will_be_busy = !ex_busy && execute_.latency(id_ex_) > 1;
 
         // Reconstruct EX and MWB instructions from their latch control word.
         // The 4-stage HDU needs decoded Instruction structs for OF (=ID) and
@@ -109,7 +120,7 @@ public:
         // ---- 2. HDU evaluate --------------------------------------------
         HazardControlSignals hcs = hdu_.evaluate(
             id_inst, ex_inst, mwb_inst,
-            last_ex_out_.branch_taken, last_ex_out_.branch_target);
+            last_ex_out_.branch_taken, last_ex_out_.branch_target, ex_busy);
 
         // ---- 3. MWB (memory + writeback) --------------------------------
         bool m1_hit = true;
@@ -134,14 +145,32 @@ public:
         pending_status_ = ex_out.status_in;
         last_ex_out_    = ex_out;
 
-        // Save decoded instruction structs for the HDU next cycle.
+        // Save the EX/MWB tracker for the HDU next cycle (EX/MWB latch was just
+        // updated above, so `ex_inst` is this-cycle's EX instruction).
         ex_mwb_inst_ = (!ex_mwb_.is_valid) ? Instruction::make_nop() : ex_inst;
-        id_ex_inst_  = (hcs.of_ex_bubble || !id_ex_.is_valid) ? Instruction::make_nop() : id_inst;
 
         // ---- 5. ID -------------------------------------------------------
+        // Hold ID/EX while the multi-cycle unit is busy (the capture cycle still
+        // decodes, replacing the ID/EX latch so the op is not re-executed later).
         bool id_stall  = hcs.if_of_stall || hcs.of_ex_bubble;
         bool id_flush  = hcs.if_of_flush;
-        decode_.clockNext(if_id_, id_ex_, rf_.getAll(), mcu_, id_stall, id_flush);
+        if (!ex_busy)
+            decode_.clockNext(if_id_, id_ex_, rf_.getAll(), mcu_, id_stall, id_flush);
+
+        // ID/EX tracker = instruction that will occupy EX next cycle.
+        //  * while a multi-cycle op owns EX, the tracker stays pinned to that op;
+        //  * on its capture cycle the waiting ID/EX instruction is remembered;
+        //  * on the final cycle the waiting instruction takes over the tracker.
+        if (ex_busy) {
+            if (!execute_.isBusy()) {
+                id_ex_inst_ = ex_next_inst_;
+                ex_next_inst_ = Instruction::make_nop();
+            }
+        } else if (will_be_busy) {
+            ex_next_inst_ = (!id_ex_.is_valid) ? Instruction::make_nop() : id_inst;
+        } else {
+            id_ex_inst_ = (!id_ex_.is_valid) ? Instruction::make_nop() : id_inst;
+        }
 
         // ---- 6. IF -------------------------------------------------------
         bool branch_taken  = ex_out.branch_taken || hcs.branch_taken;
@@ -158,9 +187,10 @@ public:
         if (hcs.pc_stall) stall_cycles_++;
 
         // ---- 8. Halt / end-of-program detection -------------------------
-        // If PC is past the end and all latches are bubbles, we're done.
+        // If PC is past the end and all latches are bubbles and the EX unit is
+        // idle, we're done.
         if (!if_id_.is_valid && !id_ex_.is_valid && !ex_mwb_.is_valid &&
-            fetch_.getPC() >= imem_.size()) {
+            !execute_.isBusy() && fetch_.getPC() >= imem_.size()) {
             halted_     = true;
             stopped_    = true;
             stop_reason_ = DebugStopReason::ProgramHalted;
@@ -223,6 +253,9 @@ public:
     uint64_t totalCycles()        const { return total_cycles_; }
     uint64_t stallCycles()        const { return stall_cycles_; }
     uint64_t instructionsRetired() const { return instructions_retired_; }
+    double   clockPeriodNs()      const { return CLOCK_PERIOD_NS; }
+
+    static constexpr double CLOCK_PERIOD_NS = 2.0;
 
 private:
     // --- pipeline components ---
@@ -247,6 +280,7 @@ private:
     ExOut         last_ex_out_{};
     Instruction   id_ex_inst_{};    // decoded instruction carried from ID to EX
     Instruction   ex_mwb_inst_{};   // decoded instruction carried from EX to MWB
+    Instruction   ex_next_inst_{};  // ID/EX instruction waiting behind a multi-cycle op
 
     // --- stats ---
     uint64_t total_cycles_{0};
