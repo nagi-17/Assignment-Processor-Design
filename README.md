@@ -4,7 +4,7 @@
 
 It ships two pipelines, a vertically microprogrammed control unit, an IEEE-754 floating-point unit, and a complete software suite — assembler, disassembler, CLI simulator and debugger.
 
----
+
 
 ## Pipelines
 
