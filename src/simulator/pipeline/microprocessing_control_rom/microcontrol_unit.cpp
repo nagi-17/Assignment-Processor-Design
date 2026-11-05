@@ -46,39 +46,42 @@ private:
         // 1. INTEGER ALU INSTRUCTIONS (Opcode 00xxxx)
         // mov instruction is implemented using preprocessing, and hence it is already taken care of, no need of including it here.
 
-        // add - R-format (000000)
+        ControlWord nopCw;
+        controlStore["0000000"] = nopCw;
+
+        // add - R-format (000001)
         ControlWord addCw;
         enableSignal(addCw, Signal::IS_ADD);
         enableSignal(addCw, Signal::IS_WB);
-        controlStore["0000000"] = addCw;
-        // add - I-format (000000)
+        controlStore["0000010"] = addCw;
+        // add - I-format (000001)
         ControlWord addICw;
         enableSignal(addICw, Signal::IS_ADD);
         enableSignal(addICw, Signal::IS_WB);
         enableSignal(addICw, Signal::IS_IMMEDIATE);
-        controlStore["0000001"] = addICw;
+        controlStore["0000011"] = addICw;
 
-        // sub - R-format (000001)
+        // sub - R-format (000010)
         ControlWord subCw;
         enableSignal(subCw, Signal::IS_SUB);
         enableSignal(subCw, Signal::IS_WB);
-        controlStore["0000010"] = subCw;
-        // sub - I-format (000001)
+        controlStore["0000100"] = subCw;
+        // sub - I-format (000010)
         ControlWord subICw;
         enableSignal(subICw, Signal::IS_SUB);
         enableSignal(subICw, Signal::IS_WB);
         enableSignal(subICw, Signal::IS_IMMEDIATE);
-        controlStore["0000011"] = subICw;
+        controlStore["0000101"] = subICw;
         
-        // cmp - R-format (000010)
+        // cmp - R-format (000110)
         ControlWord cmpCw;
         enableSignal(cmpCw, Signal::IS_CMP);
-        controlStore["0000100"] = cmpCw;
-        // cmp - I-format (000010)
+        controlStore["0001100"] = cmpCw;
+        // cmp - I-format (000110)
         ControlWord cmpICw;
         enableSignal(cmpICw, Signal::IS_CMP);
         enableSignal(cmpICw, Signal::IS_IMMEDIATE);
-        controlStore["0000101"] = cmpICw;
+        controlStore["0001101"] = cmpICw;
 
         // mul - R-format (000011)
         ControlWord mulCw;
@@ -116,41 +119,41 @@ private:
         enableSignal(modICw, Signal::IS_IMMEDIATE);
         controlStore["0001011"] = modICw;
 
-        // lsl - R-format (000110)
+        // lsl - R-format (001100)
         ControlWord lslCw;
         enableSignal(lslCw, Signal::IS_LSL);
         enableSignal(lslCw, Signal::IS_WB);
-        controlStore["0001100"] = lslCw;
-        // lsl - I-format (000110)
+        controlStore["0011000"] = lslCw;
+        // lsl - I-format (001100)
         ControlWord lslICw;
         enableSignal(lslICw, Signal::IS_LSL);
         enableSignal(lslICw, Signal::IS_WB);
         enableSignal(lslICw, Signal::IS_IMMEDIATE);
-        controlStore["0001101"] = lslICw;
+        controlStore["0011001"] = lslICw;
 
-        // lsr - R-format (000111)
+        // lsr - R-format (001101)
         ControlWord lsrCw;
         enableSignal(lsrCw, Signal::IS_LSR);
         enableSignal(lsrCw, Signal::IS_WB);
-        controlStore["0001110"] = lsrCw;
-        // lsr - I-format (000111)
+        controlStore["0011010"] = lsrCw;
+        // lsr - I-format (001101)
         ControlWord lsrICw;
         enableSignal(lsrICw, Signal::IS_LSR);
         enableSignal(lsrICw, Signal::IS_WB);
         enableSignal(lsrICw, Signal::IS_IMMEDIATE);
-        controlStore["0001111"] = lsrICw;
+        controlStore["0011011"] = lsrICw;
 
-        // asr - R-format (001000)
+        // asr - R-format (001110)
         ControlWord asrCw;
         enableSignal(asrCw, Signal::IS_ASR);
         enableSignal(asrCw, Signal::IS_WB);
-        controlStore["0010000"] = asrCw;
-        // asr - I-format (001000)
+        controlStore["0011100"] = asrCw;
+        // asr - I-format (001110)
         ControlWord asrICw;
         enableSignal(asrICw, Signal::IS_ASR);
         enableSignal(asrICw, Signal::IS_WB);
         enableSignal(asrICw, Signal::IS_IMMEDIATE);
-        controlStore["0010001"] = asrICw;
+        controlStore["0011101"] = asrICw;
 
         // or - R-format (001001)
         ControlWord orCw;
@@ -169,7 +172,7 @@ private:
         enableSignal(andCw, Signal::IS_AND);
         enableSignal(andCw, Signal::IS_WB);
         controlStore["0010000"] = andCw;
-        // and - I-format (001010)
+        // and - I-format (001000)
         ControlWord andICw;
         enableSignal(andICw, Signal::IS_AND);
         enableSignal(andICw, Signal::IS_WB);
