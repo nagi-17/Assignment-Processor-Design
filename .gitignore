@@ -5,7 +5,7 @@
 # Executables
 *.out
 *.exe
-assemblers
+assembler
 
 # Custom Project Outputs
 *.bin
