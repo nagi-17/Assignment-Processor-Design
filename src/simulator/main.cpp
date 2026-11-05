@@ -141,6 +141,15 @@ bool loadProgramAuto(const std::string& path,
     return assembleSource(path, outBinary, errorMsg);
 }
 
+std::string formatTime(double ns) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2);
+    if (ns >= 1.0e6)      oss << (ns / 1.0e6) << " ms";
+    else if (ns >= 1.0e3) oss << (ns / 1.0e3) << " us";
+    else                  oss << ns << " ns";
+    return oss.str();
+}
+
 void printComparison(const PipelineStats& s4, const PipelineStats& s6) {
     std::cout << "\n========================================================================\n";
     std::cout << "                 RISC201 PIPELINE EXECUTION COMPARISON                  \n";
@@ -155,6 +164,17 @@ void printComparison(const PipelineStats& s4, const PipelineStats& s6) {
     std::cout << std::left << std::setw(30) << "Total Clock Cycles"
               << std::setw(20) << s4.total_cycles
               << std::setw(20) << s6.total_cycles << "\n";
+
+    std::ostringstream cp4_s, cp6_s;
+    cp4_s << std::fixed << std::setprecision(2) << s4.clock_period_ns;
+    cp6_s << std::fixed << std::setprecision(2) << s6.clock_period_ns;
+    std::cout << std::left << std::setw(30) << "Clock Period (ns)"
+              << std::setw(20) << cp4_s.str()
+              << std::setw(20) << cp6_s.str() << "\n";
+
+    std::cout << std::left << std::setw(30) << "Total Execution Time"
+              << std::setw(20) << formatTime(s4.total_time_ns)
+              << std::setw(20) << formatTime(s6.total_time_ns) << "\n";
     std::cout << std::left << std::setw(30) << "Stall Cycles"
               << std::setw(20) << s4.stall_cycles
               << std::setw(20) << s6.stall_cycles << "\n";
@@ -191,6 +211,23 @@ void printComparison(const PipelineStats& s4, const PipelineStats& s6) {
             std::cout << "  Analysis: Both pipelines completed in the exact same number of clock cycles.\n";
         }
     }
+
+    if (s4.total_time_ns > 0.0 && s6.total_time_ns > 0.0) {
+        if (s4.total_time_ns < s6.total_time_ns) {
+            double diff = ((s6.total_time_ns - s4.total_time_ns) / s4.total_time_ns) * 100.0;
+            std::cout << "  Wall-clock: 4-stage finishes sooner (" << formatTime(s4.total_time_ns)
+                      << " vs " << formatTime(s6.total_time_ns) << ", " << std::fixed
+                      << std::setprecision(1) << diff << "% faster).\n";
+        } else if (s6.total_time_ns < s4.total_time_ns) {
+            double diff = ((s4.total_time_ns - s6.total_time_ns) / s6.total_time_ns) * 100.0;
+            std::cout << "  Wall-clock: 6-stage finishes sooner (" << formatTime(s6.total_time_ns)
+                      << " vs " << formatTime(s4.total_time_ns) << ", " << std::fixed
+                      << std::setprecision(1) << diff << "% faster).\n";
+        } else {
+            std::cout << "  Wall-clock: Both pipelines take the same time ("
+                      << formatTime(s4.total_time_ns) << ").\n";
+        }
+    }
     std::cout << "========================================================================\n\n";
 }
 
@@ -200,6 +237,8 @@ void printStats(const PipelineStats& s) {
     std::cout << "=======================================================\n";
     std::cout << "  Instructions Retired:  " << s.instructions_retired << "\n";
     std::cout << "  Total Clock Cycles:    " << s.total_cycles << "\n";
+    std::cout << "  Clock Period:          " << std::fixed << std::setprecision(2) << s.clock_period_ns << " ns\n";
+    std::cout << "  Total Execution Time:  " << formatTime(s.total_time_ns) << "\n";
     std::cout << "  Stall Cycles:          " << s.stall_cycles << "\n";
     if (s.total_cycles > 0) {
         double stall_pct = (static_cast<double>(s.stall_cycles) / s.total_cycles) * 100.0;

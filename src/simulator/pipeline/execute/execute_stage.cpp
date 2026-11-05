@@ -47,8 +47,37 @@ static inline void initOut(ExOutLatch& out, const ID_EX_Latch& in) {
 }
 
 // -------------------------------------------------------------------------
+//  Multi-cycle scheduling
+// -------------------------------------------------------------------------
 
+// Wrapper around the datapath that holds long-latency operations in EX.
 ExOut ExecuteStage::clockNext(const ID_EX_Latch& in, ExOutLatch& out) {
+    if (!busy_) {
+        uint32_t cycles = latency(in);
+        if (cycles > 1) {
+            held_      = in;
+            remaining_ = cycles;
+            busy_      = true;
+        } else {
+            return computeNormal(in, out);
+        }
+    }
+
+    // Occupied: emit a bubble until the last (result) cycle.
+    if (--remaining_ > 0) {
+        out.reset();
+        ExOut busy_out;
+        busy_out.busy = true;
+        return busy_out;
+    }
+
+    busy_ = false;
+    return computeNormal(held_, out);
+}
+
+// -------------------------------------------------------------------------
+
+ExOut ExecuteStage::computeNormal(const ID_EX_Latch& in, ExOutLatch& out) {
     ExOut result;
 
     if (!in.is_valid) {

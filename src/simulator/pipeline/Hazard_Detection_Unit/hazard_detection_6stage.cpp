@@ -276,6 +276,7 @@ struct HazardControlSignals
     bool if_id_stall = false;  // Freezes IF/ID pipeline register
     bool if_id_flush = false;  // Flushes IF/ID register to NOP
     bool id_ex_bubble = false; // Injects NOP into ID/EX register
+    bool ex_hold = false;      // Holds the ID/EX register (multi-cycle EX owns it)
     bool branch_taken = false; // Multiplexer select: redirect PC to target
     uint32_t branch_pc = 0;    // Target PC to load
 
@@ -346,9 +347,23 @@ public:
         const Instruction &MA2_STAGE,
         const Instruction &RW_STAGE,
         bool branch_taken_ex,
-        uint32_t branch_target_ex) const
+        uint32_t branch_target_ex,
+        bool ex_busy = false) const
     {
         HazardControlSignals ctrl;
+
+        // 0. Multi-cycle EX unit owns the ID/EX register: hold it in place and
+        //    freeze the front-end. No bubble is injected (the EX stage keeps the
+        //    long-latency instruction), and no branch can resolve meanwhile.
+        if (ex_busy)
+        {
+            ctrl.ex_hold      = true;
+            ctrl.pc_stall     = true;
+            ctrl.if_id_stall  = true;
+            ctrl.if_id_flush  = false;
+            ctrl.id_ex_bubble = false;
+            return ctrl;
+        }
 
         // 1. Control Hazard / Branch Resolution (Branch resolved inside EX_STAGE)
         if (branch_taken_ex)

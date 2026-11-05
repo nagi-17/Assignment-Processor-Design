@@ -13,6 +13,8 @@ struct PipelineStats {
     uint64_t total_cycles{0};
     uint64_t stall_cycles{0};
     uint64_t instructions_retired{0};
+    double clock_period_ns{0.0};
+    double total_time_ns{0.0};
     double cpi{0.0};
     bool completed{false};
     std::string error;

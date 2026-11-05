@@ -30,6 +30,8 @@ PipelineStats runSixStage(const std::vector<std::string>& binary, bool debug_mod
     stats.total_cycles = cpu.totalCycles();
     stats.stall_cycles = cpu.stallCycles();
     stats.instructions_retired = cpu.instructionsRetired();
+    stats.clock_period_ns = cpu.clockPeriodNs();
+    stats.total_time_ns = static_cast<double>(stats.total_cycles) * stats.clock_period_ns;
     stats.cpi = (stats.instructions_retired > 0)
         ? static_cast<double>(stats.total_cycles) / stats.instructions_retired
         : 0.0;
