@@ -1,0 +1,399 @@
+// main.cpp
+// Top-level CLI and Simulator Driver for the RISC201 Processor.
+//
+// Allows assembling RISC201 assembly files, executing on either the 4-stage
+// or 6-stage pipelined processor, launching the interactive step-by-step
+// debugger, and comparing the clock-cycle performance between both pipelines.
+
+#include <iostream>
+#include <iomanip>
+#include <string>
+#include <vector>
+#include <fstream>
+#include <sstream>
+#include <algorithm>
+
+#include "runner_interface.hpp"
+
+// Assembler components
+#include "../assembler/preprocessor.cpp"
+#include "../assembler/symbol_table.cpp"
+#include "../assembler/bin_generator.cpp"
+
+namespace {
+
+void printBanner() {
+    std::cout << "\n"
+              << "========================================================================\n"
+              << "               RISC201 Processor Simulation Environment                \n"
+              << "       Computer Organization & Architecture (CSC-201) Assignment       \n"
+              << "       Supports 4-Stage & 6-Stage Pipelines with Microprogrammed CU    \n"
+              << "========================================================================\n"
+              << "Type 'help' for available commands, or 'load <file.s>' to load code.\n\n";
+}
+
+void printHelp() {
+    std::cout << "Available Commands:\n"
+              << "  load <file.s|file.bin>    Load and auto-assemble a source program\n"
+              << "  assemble <in.s> [out.bin] Assemble source code into binary file\n"
+              << "  run4                      Execute loaded program on 4-Stage Pipeline\n"
+              << "  run6                      Execute loaded program on 6-Stage Pipeline\n"
+              << "  debug4                    Interactive step-by-step debugger (4-Stage)\n"
+              << "  debug6                    Interactive step-by-step debugger (6-Stage)\n"
+              << "  compare                   Run on BOTH pipelines and compare cycle stats\n"
+              << "  program                   Display currently loaded binary instructions\n"
+              << "  stats                     Display stats from the most recent run\n"
+              << "  help                      Display this help menu\n"
+              << "  quit / exit               Exit simulator\n\n"
+              << "Examples:\n"
+              << "  load tests/test_basic.s\n"
+              << "  run4\n"
+              << "  run6\n"
+              << "  compare\n"
+              << "  debug4\n\n";
+}
+
+bool assembleSource(const std::string& inputPath,
+                    std::vector<std::string>& outBinary,
+                    std::string& errorMsg) {
+    std::ifstream infile(inputPath);
+    if (!infile.is_open()) {
+        errorMsg = "Could not open source file: " + inputPath;
+        return false;
+    }
+
+    std::vector<std::string> raw_lines;
+    std::string line;
+    while (std::getline(infile, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        raw_lines.push_back(line);
+    }
+
+    try {
+        Preprocessor preprocessor;
+        std::vector<std::string> clean_lines = preprocessor.process(raw_lines);
+
+        PassOne pass_one;
+        pass_one.run(clean_lines);
+        auto pure_instructions = pass_one.get_pure_instructions();
+        auto symbol_table = pass_one.get_symbol_table();
+
+        BinaryGenerator pass_two;
+        outBinary = pass_two.generate(pure_instructions, symbol_table);
+        return true;
+    } catch (const std::exception& e) {
+        errorMsg = std::string("Assembly error: ") + e.what();
+        return false;
+    }
+}
+
+bool loadBinaryFile(const std::string& inputPath,
+                    std::vector<std::string>& outBinary,
+                    std::string& errorMsg) {
+    std::ifstream infile(inputPath);
+    if (!infile.is_open()) {
+        errorMsg = "Could not open binary file: " + inputPath;
+        return false;
+    }
+
+    outBinary.clear();
+    std::string line;
+    while (std::getline(infile, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        size_t first = line.find_first_not_of(" \t");
+        if (first == std::string::npos) continue;
+        size_t last = line.find_last_not_of(" \t");
+        std::string trimmed = line.substr(first, last - first + 1);
+        if (trimmed.empty() || trimmed[0] == '#' || trimmed[0] == ';') continue;
+        outBinary.push_back(trimmed);
+    }
+
+    if (outBinary.empty()) {
+        errorMsg = "Binary file is empty: " + inputPath;
+        return false;
+    }
+    return true;
+}
+
+bool loadProgramAuto(const std::string& path,
+                     std::vector<std::string>& outBinary,
+                     std::string& errorMsg) {
+    if (path.size() >= 2 && path.substr(path.size() - 2) == ".s") {
+        return assembleSource(path, outBinary, errorMsg);
+    }
+
+    std::vector<std::string> lines;
+    if (loadBinaryFile(path, lines, errorMsg)) {
+        bool looksLikeBinary = true;
+        for (const auto& l : lines) {
+            if (l.size() != 32) { looksLikeBinary = false; break; }
+            for (char c : l) {
+                if (c != '0' && c != '1') { looksLikeBinary = false; break; }
+            }
+            if (!looksLikeBinary) break;
+        }
+        if (looksLikeBinary) {
+            outBinary = lines;
+            return true;
+        }
+    }
+
+    return assembleSource(path, outBinary, errorMsg);
+}
+
+void printComparison(const PipelineStats& s4, const PipelineStats& s6) {
+    std::cout << "\n========================================================================\n";
+    std::cout << "                 RISC201 PIPELINE EXECUTION COMPARISON                  \n";
+    std::cout << "========================================================================\n";
+    std::cout << std::left << std::setw(30) << "Metric"
+              << std::setw(20) << "4-Stage Pipeline"
+              << std::setw(20) << "6-Stage Pipeline" << "\n";
+    std::cout << "------------------------------------------------------------------------\n";
+    std::cout << std::left << std::setw(30) << "Instructions Retired"
+              << std::setw(20) << s4.instructions_retired
+              << std::setw(20) << s6.instructions_retired << "\n";
+    std::cout << std::left << std::setw(30) << "Total Clock Cycles"
+              << std::setw(20) << s4.total_cycles
+              << std::setw(20) << s6.total_cycles << "\n";
+    std::cout << std::left << std::setw(30) << "Stall Cycles"
+              << std::setw(20) << s4.stall_cycles
+              << std::setw(20) << s6.stall_cycles << "\n";
+
+    double pct4 = (s4.total_cycles > 0) ? (static_cast<double>(s4.stall_cycles) / s4.total_cycles) * 100.0 : 0.0;
+    double pct6 = (s6.total_cycles > 0) ? (static_cast<double>(s6.stall_cycles) / s6.total_cycles) * 100.0 : 0.0;
+
+    std::ostringstream ss4, ss6;
+    ss4 << std::fixed << std::setprecision(1) << pct4 << "%";
+    ss6 << std::fixed << std::setprecision(1) << pct6 << "%";
+
+    std::cout << std::left << std::setw(30) << "Stall Overhead"
+              << std::setw(20) << ss4.str()
+              << std::setw(20) << ss6.str() << "\n";
+
+    std::ostringstream cpi4_s, cpi6_s;
+    cpi4_s << std::fixed << std::setprecision(2) << s4.cpi;
+    cpi6_s << std::fixed << std::setprecision(2) << s6.cpi;
+
+    std::cout << std::left << std::setw(30) << "CPI (Cycles/Instruction)"
+              << std::setw(20) << cpi4_s.str()
+              << std::setw(20) << cpi6_s.str() << "\n";
+    std::cout << "------------------------------------------------------------------------\n";
+
+    if (s4.total_cycles > 0 && s6.total_cycles > 0) {
+        if (s4.total_cycles < s6.total_cycles) {
+            double diff = ((static_cast<double>(s6.total_cycles) - s4.total_cycles) / s4.total_cycles) * 100.0;
+            std::cout << "  Analysis: 4-stage pipeline is " << std::fixed << std::setprecision(1) << diff
+                      << "% faster (fewer stall cycles across shorter hazard window).\n";
+        } else if (s6.total_cycles < s4.total_cycles) {
+            double diff = ((static_cast<double>(s4.total_cycles) - s6.total_cycles) / s6.total_cycles) * 100.0;
+            std::cout << "  Analysis: 6-stage pipeline completed with fewer cycles (" << std::fixed << std::setprecision(1) << diff << "% difference).\n";
+        } else {
+            std::cout << "  Analysis: Both pipelines completed in the exact same number of clock cycles.\n";
+        }
+    }
+    std::cout << "========================================================================\n\n";
+}
+
+void printStats(const PipelineStats& s) {
+    std::cout << "\n=======================================================\n";
+    std::cout << "  Execution Results: " << s.pipeline_name << "\n";
+    std::cout << "=======================================================\n";
+    std::cout << "  Instructions Retired:  " << s.instructions_retired << "\n";
+    std::cout << "  Total Clock Cycles:    " << s.total_cycles << "\n";
+    std::cout << "  Stall Cycles:          " << s.stall_cycles << "\n";
+    if (s.total_cycles > 0) {
+        double stall_pct = (static_cast<double>(s.stall_cycles) / s.total_cycles) * 100.0;
+        std::cout << "  Stall Overhead:        " << std::fixed << std::setprecision(1) << stall_pct << "%\n";
+    }
+    std::cout << "  CPI:                   " << std::fixed << std::setprecision(2) << s.cpi << "\n";
+    std::cout << "  Status:                " << (s.completed ? "Halted / Finished" : "Running / Safety Limit") << "\n";
+    std::cout << "=======================================================\n\n";
+}
+
+} // namespace
+
+int main(int argc, char* argv[]) {
+    std::vector<std::string> loaded_binary;
+    std::string current_file;
+    PipelineStats last_stats{};
+    bool has_last_stats = false;
+
+    // Check command line arguments for batch / direct mode
+    if (argc >= 2) {
+        std::string arg1 = argv[1];
+        if (arg1 == "--help" || arg1 == "-h") {
+            printHelp();
+            return 0;
+        }
+
+        std::string filename;
+        std::string mode = "compare";
+
+        if (arg1 == "--4stage" || arg1 == "-4") {
+            mode = "run4";
+            if (argc >= 3) filename = argv[2];
+        } else if (arg1 == "--6stage" || arg1 == "-6") {
+            mode = "run6";
+            if (argc >= 3) filename = argv[2];
+        } else if (arg1 == "--debug4" || arg1 == "-d4") {
+            mode = "debug4";
+            if (argc >= 3) filename = argv[2];
+        } else if (arg1 == "--debug6" || arg1 == "-d6") {
+            mode = "debug6";
+            if (argc >= 3) filename = argv[2];
+        } else {
+            filename = arg1;
+        }
+
+        if (!filename.empty()) {
+            std::string err;
+            if (!loadProgramAuto(filename, loaded_binary, err)) {
+                std::cerr << "Error: " << err << "\n";
+                return 1;
+            }
+            std::cout << "Loaded " << loaded_binary.size() << " instructions from " << filename << "\n";
+
+            if (mode == "run4") {
+                PipelineStats s = runFourStage(loaded_binary, false);
+                printStats(s);
+                return 0;
+            } else if (mode == "run6") {
+                PipelineStats s = runSixStage(loaded_binary, false);
+                printStats(s);
+                return 0;
+            } else if (mode == "debug4") {
+                runFourStage(loaded_binary, true);
+                return 0;
+            } else if (mode == "debug6") {
+                runSixStage(loaded_binary, true);
+                return 0;
+            } else {
+                PipelineStats s4 = runFourStage(loaded_binary, false);
+                PipelineStats s6 = runSixStage(loaded_binary, false);
+                printComparison(s4, s6);
+                return 0;
+            }
+        }
+    }
+
+    printBanner();
+
+    std::string line;
+    while (true) {
+        std::cout << "risc201> ";
+        if (!std::getline(std::cin, line)) {
+            break;
+        }
+
+        std::istringstream iss(line);
+        std::string cmd;
+        iss >> cmd;
+        if (cmd.empty()) continue;
+
+        if (cmd == "help" || cmd == "h") {
+            printHelp();
+        } else if (cmd == "load") {
+            std::string path;
+            if (!(iss >> path)) {
+                std::cout << "Usage: load <file.s | file.bin>\n";
+                continue;
+            }
+            std::string err;
+            std::vector<std::string> bin;
+            if (!loadProgramAuto(path, bin, err)) {
+                std::cout << "Error: " << err << "\n";
+            } else {
+                loaded_binary = bin;
+                current_file = path;
+                std::cout << "Successfully loaded " << loaded_binary.size()
+                          << " instructions from '" << path << "'.\n";
+            }
+        } else if (cmd == "assemble") {
+            std::string in_path, out_path;
+            if (!(iss >> in_path)) {
+                std::cout << "Usage: assemble <input.s> [output.bin]\n";
+                continue;
+            }
+            if (!(iss >> out_path)) {
+                out_path = in_path + ".bin";
+            }
+            std::string err;
+            std::vector<std::string> bin;
+            if (!assembleSource(in_path, bin, err)) {
+                std::cout << "Error: " << err << "\n";
+            } else {
+                std::ofstream outfile(out_path);
+                if (!outfile.is_open()) {
+                    std::cout << "Error: Could not write to " << out_path << "\n";
+                } else {
+                    for (const auto& b : bin) {
+                        outfile << b << "\n";
+                    }
+                    std::cout << "Assembled " << bin.size() << " instructions into '"
+                              << out_path << "'.\n";
+                }
+            }
+        } else if (cmd == "run4") {
+            if (loaded_binary.empty()) {
+                std::cout << "No program loaded. Use 'load <file.s>' first.\n";
+                continue;
+            }
+            last_stats = runFourStage(loaded_binary, false);
+            has_last_stats = true;
+            printStats(last_stats);
+        } else if (cmd == "run6") {
+            if (loaded_binary.empty()) {
+                std::cout << "No program loaded. Use 'load <file.s>' first.\n";
+                continue;
+            }
+            last_stats = runSixStage(loaded_binary, false);
+            has_last_stats = true;
+            printStats(last_stats);
+        } else if (cmd == "debug4") {
+            if (loaded_binary.empty()) {
+                std::cout << "No program loaded. Use 'load <file.s>' first.\n";
+                continue;
+            }
+            runFourStage(loaded_binary, true);
+        } else if (cmd == "debug6") {
+            if (loaded_binary.empty()) {
+                std::cout << "No program loaded. Use 'load <file.s>' first.\n";
+                continue;
+            }
+            runSixStage(loaded_binary, true);
+        } else if (cmd == "compare") {
+            if (loaded_binary.empty()) {
+                std::cout << "No program loaded. Use 'load <file.s>' first.\n";
+                continue;
+            }
+            std::cout << "Running on 4-stage pipeline...\n";
+            PipelineStats s4 = runFourStage(loaded_binary, false);
+            std::cout << "Running on 6-stage pipeline...\n";
+            PipelineStats s6 = runSixStage(loaded_binary, false);
+            printComparison(s4, s6);
+        } else if (cmd == "program" || cmd == "listing") {
+            if (loaded_binary.empty()) {
+                std::cout << "No program loaded.\n";
+            } else {
+                std::cout << "Loaded Program (" << loaded_binary.size() << " instructions from "
+                          << current_file << "):\n";
+                for (size_t i = 0; i < loaded_binary.size(); ++i) {
+                    std::cout << "  [" << std::setw(3) << i << "] " << loaded_binary[i] << "\n";
+                }
+            }
+        } else if (cmd == "stats") {
+            if (!has_last_stats) {
+                std::cout << "No execution stats available. Run a program first with 'run4' or 'run6'.\n";
+            } else {
+                printStats(last_stats);
+            }
+        } else if (cmd == "quit" || cmd == "q" || cmd == "exit") {
+            std::cout << "Exiting RISC201 simulator. Goodbye!\n";
+            break;
+        } else {
+            std::cout << "Unknown command: '" << cmd << "'. Type 'help' for commands.\n";
+        }
+    }
+
+    return 0;
+}

@@ -26,6 +26,8 @@ void printHelp() {
          << "  field <stage> <name>         Show a field in a pipeline stage\n"
          << "  micro                        Show microPC, if available\n"
          << "  status                       Show the current stop status\n"
+         << "  stats                        Show cycle and stall statistics\n"
+         << "  stack [count]                Render active ASCII stack memory frame\n"
          << "  step [count]                 Step 1 to 10000 clock cycles\n"
          << "  run                          Run until the CPU stops\n"
          << "  break <address>              Add an aligned breakpoint address\n"
@@ -204,6 +206,64 @@ void runDebuggerCLI(DebuggerTarget& cpu) {
             else cout << "microPC is not available.\n";
         } else if (command == "status") {
             printStatus(snapshot);
+        } else if (command == "stats") {
+            if (!snapshot.has_stats) {
+                cout << "Cycle statistics are not available for this target.\n";
+            } else {
+                cout << "\n================ Execution Statistics ================\n";
+                cout << "  Total Clock Cycles:       " << snapshot.total_cycles << "\n";
+                cout << "  Stall Cycles:             " << snapshot.stall_cycles << "\n";
+                cout << "  Instructions Retired:     " << snapshot.instructions_retired << "\n";
+                if (snapshot.instructions_retired > 0) {
+                    double cpi = static_cast<double>(snapshot.total_cycles) / snapshot.instructions_retired;
+                    cout << "  CPI (Cycles / Inst):      " << fixed << setprecision(2) << cpi << "\n";
+                }
+                if (snapshot.total_cycles > 0) {
+                    double stall_pct = (static_cast<double>(snapshot.stall_cycles) / snapshot.total_cycles) * 100.0;
+                    cout << "  Stall Overhead:           " << fixed << setprecision(1) << stall_pct << "%\n";
+                }
+                cout << "======================================================\n\n";
+            }
+        } else if (command == "stack") {
+            uint32_t sp = snapshot.registers[14];
+            uint32_t fp = snapshot.registers[13];
+            string countText;
+            uint64_t count = 0;
+            bool hasCount = false;
+            if (input >> countText) {
+                if (parseNumber(countText, count) && count > 0 && count <= 64) {
+                    hasCount = true;
+                }
+            }
+
+            if (sp == 0 && fp == 0 && !hasCount) {
+                cout << "Stack is uninitialized (SP=0, FP=0). To inspect an address range, use 'stack <count>' or 'mem <addr> <count>'.\n";
+            } else {
+                size_t numWords = hasCount ? count : 6;
+                // If fp is set and greater than sp, show up to fp + 1 word
+                if (!hasCount && fp > sp && (fp - sp) / 4 < 32) {
+                    numWords = (fp - sp) / 4 + 1;
+                }
+
+                cout << "\n+-----------------------------------------------------------+\n";
+                cout << "|                  ACTIVE STACK MEMORY FRAME                |\n";
+                cout << "+------------+------------+---------------------------------+\n";
+                cout << "| Address    | Value      | Frame Annotation                |\n";
+                cout << "+------------+------------+---------------------------------+\n";
+                for (int i = static_cast<int>(numWords) - 1; i >= 0; --i) {
+                    uint32_t addr = sp + static_cast<uint32_t>(i * 4);
+                    uint32_t val = 0;
+                    cpu.readMemoryWord(addr, val);
+                    cout << "| " << left << setw(10) << hexAddress(addr) << " | 0x"
+                         << hex << right << setw(8) << setfill('0') << val << dec << " | ";
+                    string annot;
+                    if (addr == sp && addr == fp) annot = "<-- SP (r14) & FP (r13)";
+                    else if (addr == sp) annot = "<-- SP (r14) [Top of Stack]";
+                    else if (addr == fp) annot = "<-- FP (r13) [Frame Base]";
+                    cout << left << setw(31) << setfill(' ') << annot << " |\n";
+                }
+                cout << "+------------+------------+---------------------------------+\n\n";
+            }
         } else if (command == "step") {
             string countText;
             uint64_t count = 1;

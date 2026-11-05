@@ -63,6 +63,14 @@ uint32_t buildImmediate(uint32_t ir, const ControlWord& cw) {
     if (has(cw, Signal::IS_CSRR) || has(cw, Signal::IS_CSRW)) {
         return ir & 0xFFFFu;                                     // CSR index
     }
+    // fmov (F-TYPE): IS_FLOAT + IS_WB, no FADD/FSUB/FMUL/FDIV/FCMP
+    // The immediate is 21 bits embedded directly in the instruction.
+    if (has(cw, Signal::IS_FLOAT) &&
+        !has(cw, Signal::IS_FADD) && !has(cw, Signal::IS_FSUB) &&
+        !has(cw, Signal::IS_FMUL) && !has(cw, Signal::IS_FDIV) &&
+        !has(cw, Signal::IS_FCMP)) {
+        return ir & 0x1FFFFFu;                                   // 21-bit fmov immediate
+    }
     return signExtend(ir, kImmBits);                             // default
 }
 

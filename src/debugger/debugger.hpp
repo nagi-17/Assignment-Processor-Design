@@ -69,6 +69,12 @@ struct DebuggerSnapshot {
 
     bool is_stopped{false};
     DebugStopReason stop_reason{DebugStopReason::None};
+
+    // Performance and execution statistics
+    uint64_t total_cycles{0};
+    uint64_t stall_cycles{0};
+    uint64_t instructions_retired{0};
+    bool has_stats{false};
 };
 
 
