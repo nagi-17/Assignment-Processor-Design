@@ -72,6 +72,7 @@ uint32_t buildImmediate(uint32_t ir, const ControlWord& cw) {
 
 OperandSources OperandFetchStage::sourcesOf(uint32_t ir, const ControlWord& cw) {
     OperandSources s;
+    if (cw.none()) return s;                 // nop: no sources
     const uint8_t rd  = (ir >> kRdShift)  & 0xF;
     const uint8_t rs1 = (ir >> kRs1Shift) & 0xF;
     const uint8_t rs2 = (ir >> kRs2Shift) & 0xF;
@@ -97,9 +98,14 @@ OperandSources OperandFetchStage::sourcesOf(uint32_t ir, const ControlWord& cw) 
         s.uses_a = true; s.a = rs1;
         return s;
     }
-    if (has(cw, Signal::IS_CSRW) || has(cw, Signal::IS_CHK)) {
-        s.uses_a = true; s.a = rs1;
-        return s;
+    if (has(cw, Signal::IS_CSRW)) {          // csrw reads one register
+    s.uses_a = true; s.a = rs1;
+    return s;
+    }
+    if (has(cw, Signal::IS_CHK)) {           // chk reads two registers (R_TYPE_2)
+    s.uses_a = true; s.a = rs1;
+    s.uses_b = true; s.b = rs2;
+    return s;
     }
 
     // No register sources.
