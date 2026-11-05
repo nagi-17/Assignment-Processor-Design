@@ -103,7 +103,7 @@ class EX_MA1_Latch
 {
     public:
         uint32_t exResult{0}; // ALU/FPU computed result or memory target address
-        uint32_t pc_next{0};  // PC + 4 for function calls and traps
+        uint32_t pc_next{0};  // PC + 1 for function calls and traps
         bool is_Ld{false};    // Memory Load control signal
         bool is_St{false};    // Memory Store control signal
         bool is_Wb{false};    // Register Writeback enable
@@ -118,6 +118,9 @@ class EX_MA1_Latch
         bool is_Ebreak{false};
         bool is_Eret{false};
         bool is_Wfi{false};
+
+        // Stack fault raised in EX by chk (carried on to MA1/MA2)
+        bool stack_fault{false};
 
         void reset()
         {
@@ -135,12 +138,10 @@ class EX_MA1_Latch
             is_Ebreak = false;
             is_Eret = false;
             is_Wfi = false;
+            stack_fault = false;
         }
 
-        void flush()
-        {
-            reset();
-        }
+        void flush() { reset(); }
 
         void dump() const
         {
@@ -151,7 +152,9 @@ class EX_MA1_Latch
                     << " | PC_Next: 0x" << std::setw(8) << pc_next
                     << " | st_data: 0x" << std::setw(8) << st_data
                     << std::dec
-                    << " | Ld:" << is_Ld << " St:" << is_St << " Wb:" << is_Wb  << " Call:" << is_Call << " Clear:" << is_Clear
+                    << " | Ld:" << is_Ld << " St:" << is_St << " Wb:" << is_Wb
+                    << " Call:" << is_Call << " Clear:" << is_Clear
+                    << " | StackFault:" << stack_fault
                     << " | Traps [Ecall:" << is_Ecall << " Ebreak:" << is_Ebreak
                     << " Eret:" << is_Eret << " Wfi:" << is_Wfi << "]\n";
         }

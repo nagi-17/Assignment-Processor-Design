@@ -20,7 +20,7 @@ class InstructionMemory {
 
         void loadProgram(const std::vector<std::string>& programStrings);
         size_t size() const;
-        uint32_t readInstruction(uint32_t pc_index) const;
+        bool readInstruction(uint32_t pc_index, uint32_t& ir) const;
 };
 
 class InstructionFetchStage {

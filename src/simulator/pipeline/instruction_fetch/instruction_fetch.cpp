@@ -10,20 +10,17 @@ size_t InstructionMemory::size() const {
     return memory.size();
 }
 
-uint32_t InstructionMemory::readInstruction(uint32_t pc_index) const {
-    if (pc_index < memory.size()) {
-        const std::string& binStr = memory[pc_index];
-        if (binStr.length() >= 32) {
-            try {
-                return static_cast<uint32_t>(std::stoul(binStr.substr(0, 32), nullptr, 2));
-            } catch (const std::exception& e) {
-                std::cerr << "[IMEM ERROR]: Malformed binary string at PC index " 
-                          << pc_index << ": " << binStr << "\n";
-                return 0;
-            }
-        }
+bool InstructionMemory::readInstruction(uint32_t idx, uint32_t& ir) const {
+    if (idx >= memory.size()) return false;
+    const std::string& s = memory[idx];
+    if (s.size() < 32) return false;
+    uint32_t v = 0;
+    for (int i = 0; i < 32; ++i) {
+        if (s[i] != '0' && s[i] != '1') return false;
+        v = (v << 1) | (s[i] == '1');
     }
-    return 0; // NOP fallback for out-of-bounds access
+    ir = v;
+    return true;
 }
 
 InstructionFetchStage::InstructionFetchStage(uint32_t start_pc) : pc(start_pc) {}
@@ -47,17 +44,15 @@ void InstructionFetchStage::clockNext(
     uint32_t epc,
     bool is_trap,
     uint32_t trap_vector
-) {
+){
+    if (is_trap || is_eret || is_branch_taken) {
+    out_latch.flush();
+    pc = is_trap ? trap_vector : (is_eret ? epc : branch_target);
+    return;
+    }
     // 1. Handle Pipeline Flush
     if (is_flush) {
         out_latch.flush();
-        if (is_trap) {
-            pc = trap_vector;
-        } else if (is_eret) {
-            pc = epc;
-        } else if (is_branch_taken) {
-            pc = branch_target;
-        }
         return;
     }
 
@@ -72,23 +67,13 @@ void InstructionFetchStage::clockNext(
         return;
     }
 
-    // 4. Perform Sequential Fetch & Latch Update
-    uint32_t pc_next = pc + 1;
-    uint32_t ir = imem.readInstruction(pc);
-
-    out_latch.pc = pc;
-    out_latch.ir = ir;
-    out_latch.pc_next = pc_next;
-    out_latch.is_valid = true;
-
-    // 5. Next-PC Priority Multiplexer
-    if (is_trap) {
-        pc = trap_vector;
-    } else if (is_eret) {
-        pc = epc;
-    } else if (is_branch_taken) {
-        pc = branch_target;
-    } else {
-        pc = pc_next;
+    uint32_t ir = 0;
+    if (!imem.readInstruction(pc, ir)) {
+        std::cerr << "[IMEM ERROR] bad instruction at index " << pc << "\n";
+        out_latch.reset();
+        return;                // let the main loop stop or raise a fault
     }
+    out_latch.pc = pc;  out_latch.ir = ir;
+    out_latch.pc_next = pc + 1;  out_latch.is_valid = true;
+    pc = pc + 1;
 }
