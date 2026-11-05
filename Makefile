@@ -34,7 +34,12 @@ COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
 all: simulator assembler
 
 # Assembler build
-assembler: src/assembler/main_assembler.cpp
+ASSEMBLER_SRCS = src/assembler/main_assembler.cpp \
+                 src/assembler/preprocessor.cpp \
+                 src/assembler/symbol_table.cpp \
+                 src/assembler/bin_generator.cpp
+
+assembler: $(ASSEMBLER_SRCS)
 	$(CXX) $(CXXFLAGS) -I src/headers src/assembler/main_assembler.cpp -o assembler
 
 # Runner object files
@@ -44,7 +49,7 @@ src/simulator/four_stage_runner.o: src/simulator/four_stage_runner.cpp src/simul
 src/simulator/six_stage_runner.o: src/simulator/six_stage_runner.cpp src/simulator/six_stage_cpu.hpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/simulator/six_stage_runner.cpp -o src/simulator/six_stage_runner.o
 
-src/simulator/main.o: src/simulator/main.cpp
+src/simulator/main.o: src/simulator/main.cpp $(ASSEMBLER_SRCS)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/simulator/main.cpp -o src/simulator/main.o
 
 %.o: %.cpp

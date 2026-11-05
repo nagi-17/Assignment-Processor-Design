@@ -37,8 +37,14 @@ int main(int argc, char* argv[]) {
     auto pure_instructions = pass_one.get_pure_instructions();
     auto symbol_table = pass_one.get_symbol_table();
 
-    BinaryGenerator pass_two;
-    std::vector<std::string> machine_code = pass_two.generate(pure_instructions, symbol_table);
+    std::vector<std::string> machine_code;
+    try {
+        BinaryGenerator pass_two;
+        machine_code = pass_two.generate(pure_instructions, symbol_table);
+    } catch (const std::exception& e) {
+        std::cerr << "Assembly error: " << e.what() << "\n";
+        return 1;
+    }
 
     FILE* output_file = fopen(argv[2], "w");
     

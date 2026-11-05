@@ -7,7 +7,7 @@
 //
 // Instruction encoding used by the helpers (must match instruction_decode.cpp):
 //   [31:25] opcode(6) + format bit    [24:21] rd    [20:17] rs1
-//   [16:13] rs2 (R-format)            [16:0]  17-bit immediate (I-format)
+//   [16:13] rs2 (R-format)            [16:1]  16-bit immediate (I-format), bit 0 padding
 //   [24:0]  25-bit branch / call offset
 // Opcodes come straight from OPCODE_MAP, so the tests follow the ISA config.
 // ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ inline uint32_t encR(const std::string& mn, uint32_t rd, uint32_t rs1, uint32_t 
 
 inline uint32_t encI(const std::string& mn, uint32_t rd, uint32_t rs1, uint32_t imm) {
     return (opcode7(mn, true) << 25) | ((rd & 0xFu) << 21) |
-           ((rs1 & 0xFu) << 17) | (imm & 0x1FFFFu);
+           ((rs1 & 0xFu) << 17) | ((imm & 0xFFFFu) << 1);
 }
 
 inline uint32_t encBranch(const std::string& mn, uint32_t offset) {

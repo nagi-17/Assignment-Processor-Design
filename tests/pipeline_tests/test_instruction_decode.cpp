@@ -93,9 +93,9 @@ TEST_CASE(decode_add_immediate_format) {
 TEST_CASE(decode_immediate_sign_extension) {
     OperandFetchStage st;
     CHECK_EQ(run(st, encI("add", 1, 1, static_cast<uint32_t>(-3))).immx, 0xFFFFFFFDu);
-    CHECK_EQ(run(st, encI("add", 1, 1, 0x0FFFF)).immx, 0x0000FFFFu);   // largest positive
-    CHECK_EQ(run(st, encI("add", 1, 1, 0x10000)).immx, 0xFFFF0000u);   // sign bit (bit 16)
-    CHECK_EQ(run(st, encI("add", 1, 1, 0x1FFFF)).immx, 0xFFFFFFFFu);   // -1
+    CHECK_EQ(run(st, encI("add", 1, 1, 0x07FFF)).immx, 0x00007FFFu);   // largest positive 16-bit
+    CHECK_EQ(run(st, encI("add", 1, 1, 0x08000)).immx, 0xFFFF8000u);   // sign bit (bit 15)
+    CHECK_EQ(run(st, encI("add", 1, 1, 0x0FFFF)).immx, 0xFFFFFFFFu);   // -1
 }
 
 TEST_CASE(decode_all_two_format_alu_ops_set_their_signal) {

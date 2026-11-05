@@ -5,7 +5,8 @@
 # Executables
 *.out
 *.exe
-assembler
+/assembler
+/simulator
 
 # Custom Project Outputs
 *.bin
