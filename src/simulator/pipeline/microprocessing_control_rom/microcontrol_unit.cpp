@@ -6,36 +6,6 @@
 #include <iomanip>
 #include "control_signals.hpp"
 
-// // Enum mapping each control signal to a bit index in the microprogram memory
-// enum class Signal {
-//     // Basic Control, Branch & Memory (0 - 10)
-//     IS_ST = 0, IS_LD, IS_BEQ, IS_BGT, IS_BLT, IS_BNE, IS_RET, IS_IMMEDIATE, IS_WB, IS_UBRANCH, IS_CALL,
-
-//     // Integer ALU Signals (11 - 22)
-//     // IS_MOV control signal is not required, as it is implemented using preprocessing.
-//     IS_ADD, IS_SUB, IS_CMP, IS_MUL, IS_DIV, IS_MOD, IS_LSL, IS_LSR, IS_ASR, IS_OR, IS_AND, IS_NOT,
-
-//     // Extended System & Special Signals (23 - 29)
-//     IS_WFI, IS_STALL, IS_ERET, IS_CSRR, IS_CSRW, IS_SYSCALL, IS_EBREAK,
-
-//     // Floating-Point Unit (FPU) Signals (30 - 35)
-//     IS_FLOAT, IS_FADD, IS_FSUB, IS_FMUL, IS_FDIV, IS_FCMP,
-
-//     // Secure/Utility Signal (36)
-//     IS_CLEAR,
-
-//     // Total Count Sentinel
-//     COUNT
-// };
-
-// constexpr size_t CONTROL_WORD_WIDTH = static_cast<size_t>(Signal::COUNT);
-// using ControlWord = std::bitset<CONTROL_WORD_WIDTH>;
-
-// // Helper to set individual bits cleanly
-// inline void enableSignal(ControlWord& cw, Signal sig) {
-//     cw.set(static_cast<size_t>(sig));
-// }
-
 class MicroprogrammedControlUnit {
 private:
     // Stored Microprogram Memory (Control Store ROM/RAM)
@@ -140,17 +110,17 @@ private:
         enableSignal(lsrICw, Signal::IS_IMMEDIATE);
         controlStore["0001111"] = lsrICw;
 
-        // asr - R-format (001000)
+        // asr - R-format (0011100)
         ControlWord asrCw;
         enableSignal(asrCw, Signal::IS_ASR);
         enableSignal(asrCw, Signal::IS_WB);
-        controlStore["0010000"] = asrCw;
-        // asr - I-format (001000)
+        controlStore["0011100"] = asrCw;
+        // asr - I-format (0011101)
         ControlWord asrICw;
         enableSignal(asrICw, Signal::IS_ASR);
         enableSignal(asrICw, Signal::IS_WB);
         enableSignal(asrICw, Signal::IS_IMMEDIATE);
-        controlStore["0010001"] = asrICw;
+        controlStore["0011101"] = asrICw;
 
         // or - R-format (001001)
         ControlWord orCw;
@@ -164,12 +134,12 @@ private:
         enableSignal(orICw, Signal::IS_IMMEDIATE);
         controlStore["0010011"] = orICw;
 
-        // and - R-format (001000)
+        // and - R-format (0010000)
         ControlWord andCw;
         enableSignal(andCw, Signal::IS_AND);
         enableSignal(andCw, Signal::IS_WB);
         controlStore["0010000"] = andCw;
-        // and - I-format (001010)
+        // and - I-format (0010001)
         ControlWord andICw;
         enableSignal(andICw, Signal::IS_AND);
         enableSignal(andICw, Signal::IS_WB);
@@ -257,12 +227,14 @@ private:
         ControlWord movuCw;
         enableSignal(movuCw, Signal::IS_IMMEDIATE);
         enableSignal(movuCw, Signal::IS_WB);
+        enableSignal(movuCw, Signal::IS_MOVU);
         controlStore["1000101"] = movuCw;
 
         // movh - I-format (100011)
         ControlWord movhCw;
         enableSignal(movhCw, Signal::IS_IMMEDIATE);
         enableSignal(movhCw, Signal::IS_WB);
+        enableSignal(movhCw, Signal::IS_MOVH);
         controlStore["1000111"] = movhCw;
 
         // csrr - I-format (101000)
@@ -281,6 +253,7 @@ private:
         // chk - R-format (101100)
         ControlWord chkCw;
         enableSignal(chkCw, Signal::IS_CMP);
+        enableSignal(chkCw, Signal::IS_CHK);
         controlStore["1011000"] = chkCw;
 
         // clrz - R-format (101101)
@@ -365,6 +338,12 @@ private:
         // Allows dynamic modifications to the stored microprogram memory (Flexibility Feature)
         void updateMicrocode(const std::string& opcode, const ControlWord& newWord) {
             controlStore[opcode] = newWord;
+        }
+
+        // Add a duplicate guard so that overwriting on instructions does not occur.
+        void put(const std::string& k, const ControlWord& cw) {
+            if (!controlStore.emplace(k, cw).second)
+                throw std::logic_error("Duplicate opcode key " + k);
         }
 
         // Decodes 32-bit binary instruction string into corresponding control bitset

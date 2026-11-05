@@ -6,20 +6,20 @@
 
 // Enum mapping each control signal to a bit index in the microprogram memory
 enum class Signal {
-    // Basic Control, Branch & Memory (0 - 10)
-    IS_ST = 0, IS_LD, IS_BEQ, IS_BGT, IS_BLT, IS_BNE, IS_RET, IS_IMMEDIATE, IS_WB, IS_UBRANCH, IS_CALL,
+    // Basic Control, Branch & Memory (0 - 12)
+    IS_ST = 0, IS_LD, IS_BEQ, IS_BGT, IS_BLT, IS_BNE, IS_RET, IS_IMMEDIATE, IS_WB, IS_UBRANCH, IS_CALL, IS_MOVU, IS_MOVH,
 
-    // Integer ALU Signals (11 - 23)
+    // Integer ALU Signals (13 - 25)
     IS_ADD, IS_SUB, IS_CMP, IS_MUL, IS_DIV, IS_MOD, IS_LSL, IS_LSR, IS_ASR, IS_OR, IS_AND, IS_NOT, IS_XOR,
 
-    // Extended System & Special Signals (24 - 29)
+    // Extended System & Special Signals (26 - 31)
     IS_WFI, IS_ERET, IS_CSRR, IS_CSRW, IS_SYSCALL, IS_EBREAK,
 
-    // Floating-Point Unit (FPU) Signals (30 - 35)
+    // Floating-Point Unit (FPU) Signals (32 - 37)
     IS_FLOAT, IS_FADD, IS_FSUB, IS_FMUL, IS_FDIV, IS_FCMP,
 
-    // Secure/Utility Signal (36)
-    IS_CLEAR,
+    // Secure/Utility Signal (38-39)
+    IS_CLEAR, IS_CHK,
 
     // Total Count Sentinel
     COUNT
