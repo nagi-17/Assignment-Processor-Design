@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <stdexcept>
 #include <stdint.h>
+#include <bitset>
 #include "../headers/isa_config.hpp" 
 
 class BinaryGenerator {

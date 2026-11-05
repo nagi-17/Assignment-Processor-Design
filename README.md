@@ -1,110 +1,66 @@
-# RISC201 Architecture Specification
+<h1 align="center">RISC201</h1>
 
-### Registers (32-bit Unified File)
-- `r0-r3`: general purpose int registers
-- `r4-r7`: scratch registers (Caller-saved)
-- `r8-r11` or `f0-f3`: general purpose float registers
-- `r12`: zero register (Hardwired to 0)
-- `r13`: frame pointer (points to the top of the activation block)
-- `r14`: stack pointer
-- `r15`: return address
-- **System Registers (Inaccessible directly by the programmer):**
-  - `pc`
-  - `flags.E` and `flags.GT` (1-bit)
-  - `epc`: exception program counter
-  - `cause`: exception cause code
-  - Registers used in FPU -
-    
-    1. For `fmul` and `fdiv` -`A_reg`, `M_reg` and `Q_reg`  
+**RISC201** is a 32-bit RISC instruction set architecture and a pair of pipelined processors that implement it, built from scratch in C++.
 
-### Instruction Encoding Formats
-- **Register Format (R-Type):**
-  - 3-address type
-  ```
-  [6-bit opcode] [1-bit I=0] [4-bit rd] [4-bit rs1] [4-bit rs2] [13-bit padding]
-  ```
-  - 2-address type
-  ```
-  [6-bit opcode] [1-bit I=0] [4-bit padding] [4-bit rs1] [4-bit rs2] [13-bit padding]
-  ``` 
-  - 1-address type
-  ```
-  [6-bit opcode] [1-bit I=0] [4-bit rd] [4-bit padding] [4-bit padding] [13-bit padding]
-  ```
-- **Immediate Format (I-Type):**
-  - 3-address type
-  ```
-  [6-bit opcode] [1-bit I=1] [4-bit rd] [4-bit rs1] [16-bit imm] [1-bit padding]
-  ```
-  - 2-address type
-  ```
-  [6-bit opcode] [1-bit I=1] [4-bit rd] [4-bit rs1] [16-bit imm] [1-bit padding]
-  ```
-  - 1-address type
-  ```
-  [6-bit opcode] [1-bit I=1] [4-bit rd] [4-bit rs1] [16-bit imm] [1-bit padding]
-  ```
-- **Float Immediate Format (F-Type - specifically for `fmov`):**
-  ```
-  [6-bit opcode] [1-bit I=1] [4-bit rd] [21-bit float imm]
-  ```
+It ships two pipelines, a vertically microprogrammed control unit, an IEEE-754 floating-point unit, and a complete software suite — assembler, disassembler, CLI simulator and debugger.
 
-### Instruction Set Architecture (ISA)
+---
 
-| Instruction | Opcode | Format | Operands | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| **Integer ALU inst. (00)** | | | | |
-| `nop` | `000000` | R | None | No operation |
-| `add` | `000001` | R / I | `rd, rs1, rs2/imm` | |
-| `sub` | `000010` | R / I | `rd, rs1, rs2/imm` | |
-| `mul` | `000011` | R / I | `rd, rs1, rs2/imm` | |
-| `div` | `000100` | R / I | `rd, rs1, rs2/imm` | |
-| `mod` | `000101` | R / I | `rd, rs1, rs2/imm` | |
-| `cmp` | `000110` | R / I | `rs1, rs2/imm` | |
-| `and` | `001000` | R / I | `rd, rs1, rs2/imm` | |
-| `or` | `001001` | R / I | `rd, rs1, rs2/imm` | |
-| `xor` | `001010` | R / I | `rd, rs1, rs2/imm` | |
-| `not` | `001011` | R / I | `rd, rs1` | |
-| `lsl` | `001100` | R / I | `rd, rs1, rs2/imm` | |
-| `lsr` | `001101` | R / I | `rd, rs1, rs2/imm` | |
-| `asr` | `001110` | R / I | `rd, rs1, rs2/imm` | |
-| **FPU inst. (01)** | | | | |
-| `fadd` | `010001` | R | `rd, rs1, rs2` | Floating Addition (IEEE-754). |
-| `fsub` | `010010` | R | `rd, rs1, rs2` | Floating Subtraction. |
-| `fmul` | `010011` | R | `rd, rs1, rs2` | Floating Multiplication. |
-| `fdiv` | `010100` | R | `rd, rs1, rs2` | Floating Division. |
-| `fcmp` | `010110` | R | `rs1, rs2` | Floating Compare: Updates standard flags. |
-| `fmov` | `011000` | F | `rd, imm21` | Loads a 21-bit immediate floating-point value. |
-| **Memory & System inst. (10)**| | | | |
-| `ld` | `100000` | I | `rd, rs1, imm` | |
-| `st` | `100001` | I | `rs2, rs1, imm` | |
-| `movu` | `100010` | I | `rd, imm` | Move Upper: Loads immediate into top 16 bits of `rd`. |
-| `movh` | `100011` | I | `rd, imm` | Move Half: Loads immediate into bottom 16 bits of `rd`. |
-| `csrr` | `101000` | I | `rd, csr_imm` | Read system register specified by `csr_imm` into `rd`. |
-| `csrw` | `101001` | I | `csr_imm, rs1` | Write `rs1` into system register specified by `csr_imm`. |
-| `chk` | `101100` | R | `rs1, rs2` | Bounds Check: Traps if `rs1 >= rs2`. |
-| `clrz` | `101101` | R | `rd` | Zeroize: Securely wipes the specified register (`rd = 0`). |
-| **Control Flow inst. (11)** | | | | |
-| `b` | `110000` | I | `imm` | |
-| `beq` | `110001` | I | `imm` | |
-| `bne` | `110010` | I | `imm` | |
-| `bgt` | `110011` | I | `imm` | |
-| `blt` | `110100` | I | `imm` | |
-| `call` | `111000` | I | `imm` | |
-| `ret` | `111001` | R | None | |
-| `ecall` | `111100` | R | None | Triggers environment trap/syscall to OS or simulator. |
-| `eret` | `111101` | R | None | Exception Return: Restores `PC` from `epc` register. |
-| `ebreak` | `111110` | R | None | Breakpoint: Halts execution, drops to CLI debugger. |
-| `wfi` | `111111` | R | None | Wait for Interrupt: Pauses execution until external event. |
+## Pipelines
 
-*Note: `push` and `pop` are implemented as assembler preprocessor macros. Also `mov` is being implemented as `add` instruction*
+| Pipeline | Stages |
+| :--- | :--- |
+| **4-stage** | IF, ID, EX, merged MEM/WB |
+| **6-stage** | IF, ID, EX, MA1 (address + stack-boundary check), MA2 (data access + global hazard unit), WB |
 
-### Instructions which we are not sure about : 
-1. `ebreak <address>` : now this instruction will help us in implementing interactive CLI debugger, so basically what this instruction does is that whenever our program/CPU encounters this instruction in the instruction stream, then it will halt the execution, save current PC (and maybe more things/regs/data), raise a `BREAKPOINT_EXECEPTION` (if req) and pass the control to the interactive CLI prompt so that the user can use debugging features to inspect current state of registers or of execution pipeline - implement in HARDWARE
-2. `clrz <reg_name>` and/or `clrz.all` : securely wipes (makes 0) specified or all registers
-3. `chk <reg_name_1> <reg_name_2>` (safety check/bound check) : checks if `<reg_name_1> >= <reg_name_2>`, if yes then it throws a `OUT_OF_BOUNDS` exception
-These are all related/(maybe)required at system/kernel level
-4. `syscall`/`ecall` (Environment call) : instruction for software-triggered interrupt (in this ig we will have to use some extra specific registers)
-5. `eret` (exception return) : basically whenever exception handler completes resolving any issue, then it should return to the user program, so this is done by storing PC (in a system register EPC which can't be accessed directly by user)
-6. `csrr` and `csrw` : these instructions are required by system, as the general registers can't like kinda talk with system registers, so basically we need specific instructions to do this
-7. `wfi` : it basically makes the processor "sleep" until any external event is triggered
+Both start from the classic five stages. The 4-stage merges MEM and WB because the memory stage is idle for most instructions and the merge costs no forwarding path. The 6-stage splits MEM instead of EX, because splitting EX would put ALU-to-ALU dependencies — the most frequent kind — on the critical path.
+
+## Architecture
+
+- **Control unit** — vertical microprogrammed. The opcode addresses a control ROM whose word is expanded into the control signals carried through the pipeline, so new instructions are new ROM entries rather than new gates.
+- **ALU** — Kogge-Stone adder (`add`, `sub`, `cmp`, addressing), barrel shifter (all shifts in one pass), Radix-4 Booth + Wallace-tree multiplier, Radix-4 divider.
+- **FPU** — IEEE-754 binary32 `fadd`, `fsub`, `fmul`, `fdiv`, `fcmp`, with denormals flushed to zero, round-to-nearest-even, and a Newton-Raphson divider that reuses the multiplier.
+- **Hazards** — interlock-plus-forwarding: a Data Lock Unit stalls load-use pairs, forwarding covers the rest, and a Branch Lock Unit squashes speculatively fetched instructions when a branch is resolved in EX.
+- **Traps** — `ecall`, `chk`, `eret`, `ebreak` and `wfi` are resolved in the global hazard unit, with `epc` and `cause` recording the trap and the fetch multiplexer prioritising trap > `eret` > branch > stall.
+
+## Instruction Set
+
+All instructions are 32 bits, with a 6-bit opcode whose top two bits select the class.
+
+| Class | Instructions |
+| :--- | :--- |
+| `00` Integer ALU | `nop`, `add`, `sub`, `mul`, `div`, `mod`, `cmp`, `and`, `or`, `xor`, `not`, `lsl`, `lsr`, `asr` |
+| `01` Floating point | `fadd`, `fsub`, `fmul`, `fdiv`, `fcmp`, `fmov` |
+| `10` Memory & system | `ld`, `st`, `movu`, `movh`, `csrr`, `csrw`, `chk`, `clrz` |
+| `11` Control flow | `b`, `beq`, `bne`, `bgt`, `blt`, `call`, `ret`, `ecall`, `eret`, `ebreak`, `wfi` |
+
+The register file is a unified set of 16 32-bit registers (`r8`–`r11` alias `f0`–`f3`), with `r12` hardwired to zero, `r13`–`r15` as frame pointer, stack pointer and return address. `pc`, `flags.E`, `flags.GT`, `epc` and `cause` are system registers, reachable only through `csrr`/`csrw`.
+
+`push` and `pop` are assembler macros; `mov` is an `add` against the zero register.
+
+## Software
+
+- **Assembler** — two-pass; records labels and expands `push`/`pop`, then encodes to 32-bit binary strings.
+- **Disassembler** — rebuilds assembly text from binary or hex words, used to cross-check the assembler.
+- **Simulator** — interactive CLI running either pipeline, with register, pipeline-latch and microPC inspection.
+- **Debugger** — step execution, breakpoints and state inspection, entered via `ebreak` or CLI commands.
+
+## Building and Running
+
+```bash
+make                              # build ./simulator and ./assembler
+./simulator tests/test_basic.s    # run a program on both pipelines and compare
+./simulator                       # interactive CLI: load, run4, run6, debug4, debug6, compare
+make test                         # run the unit-test suites
+```
+
+Requires a C++17 compiler. Windows equivalents of the build recipes are in the `*.bat` scripts.
+
+## Report
+
+The full design rationale, hazard analysis, test results and cycle-level measurements are in
+[`COA Project Report.pdf`](COA%20Project%20Report.pdf).
+
+## Team
+
+Dhyaan Shah(25114032) · Hitansh Gandhi(25114044) · Nitesh Anand(25114065) · Ritik Yadav(25114079) · Vansh Gupta(25114097)
