@@ -81,7 +81,7 @@ class EX_MWB_Latch
     public:
         uint32_t exResult{0};  // Computed ALU/FPU result or memory target address (mar)
         uint32_t st_data{0};   // Store payload (mdr)
-        uint32_t pc_next{0};   // PC + 4 link address for call instructions
+        uint32_t pc_next{0};   // PC + 1 link address for call instructions
 
         // Control Signals
         bool is_Ld{false};
@@ -98,24 +98,29 @@ class EX_MWB_Latch
         bool is_Eret{false};
         bool is_Wfi{false};
 
+        // Stack fault raised in EX by chk (checked in MWB)
+        bool stack_fault{false};
+
         void reset() {
             exResult = 0; st_data = 0; pc_next = 0;
             is_Ld = false; is_St = false; is_Wb = false; is_Clear = false; is_Call = false;
             rd = 0; is_valid = false;
             is_Ecall = false; is_Ebreak = false; is_Eret = false; is_Wfi = false;
+            stack_fault = false;
         }
         void flush() { reset(); }
 
         void dump() const {
             std::cout << "[EX/MWB Latch] "
                     << "Valid: " << is_valid
-                    << " | RD: r" << static_cast<int>(rd)
+                    << " | RD: r" << static_cast<int>(rd & 0x0F)
                     << " | exResult: 0x" << std::hex << std::setw(8) << std::setfill('0') << exResult
                     << " | st_data: 0x" << std::setw(8) << st_data
                     << " | PC_Next: 0x" << std::setw(8) << pc_next
                     << std::dec
-                    << " | Control [Ld:" << is_Ld << " St:" << is_St << " Wb:" << is_Wb 
+                    << " | Control [Ld:" << is_Ld << " St:" << is_St << " Wb:" << is_Wb
                     << " Call:" << is_Call << " Clear:" << is_Clear << "]"
+                    << " | StackFault:" << stack_fault
                     << " | Traps [Ecall:" << is_Ecall << " Ebreak:" << is_Ebreak
                     << " Eret:" << is_Eret << " Wfi:" << is_Wfi << "]\n";
         }

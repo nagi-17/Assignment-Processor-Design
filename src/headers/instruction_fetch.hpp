@@ -5,7 +5,11 @@
 #include <vector>
 #include <string>
 #include "control_signals.hpp"
-#include "six_stage_latches.hpp" // or "four_stage_latches.hpp", as the IF/ID Latch class remains the same.
+#ifdef FOUR_STAGE_PIPELINE
+#include "four_stage_latches.hpp"
+#else
+#include "six_stage_latches.hpp"
+#endif
 
 class InstructionMemory {
     private:
@@ -16,7 +20,7 @@ class InstructionMemory {
 
         void loadProgram(const std::vector<std::string>& programStrings);
         size_t size() const;
-        uint32_t readInstruction(uint32_t pc_index) const;
+        bool readInstruction(uint32_t pc_index, uint32_t& ir) const;
 };
 
 class InstructionFetchStage {
