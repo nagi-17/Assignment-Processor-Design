@@ -5,6 +5,7 @@
 #include <vector>
 #include <iomanip>
 #include "control_signals.hpp"
+#include <stdexcept>
 
 class MicroprogrammedControlUnit {
 private:
