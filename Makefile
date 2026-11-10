@@ -14,7 +14,8 @@ INCLUDES = -I src/headers \
            -I src/simulator/pipeline/execute \
            -I src/simulator \
            -I src/microcontrol \
-           -I src/assembler
+           -I src/assembler \
+           -I src/tui
 
 # Common pipeline & unit sources
 COMMON_SRCS = src/simulator/pipeline/instruction_fetch/instruction_fetch.cpp \
@@ -47,6 +48,21 @@ SESSION_SRCS = src/simulator/four_stage_session.cpp \
                src/simulator/six_stage_session.cpp
 
 SESSION_OBJS = $(SESSION_SRCS:.cpp=.o)
+
+# Full-screen TUI debugger.  The two *_entry objects each own one pipeline's
+# CPU instance; everything else is pipeline-agnostic.
+TUI_CORE_SRCS = src/tui/screen.cpp \
+                src/tui/instruction_text.cpp \
+                src/tui/debugger_model.cpp \
+                src/tui/renderer.cpp \
+                src/tui/terminal.cpp \
+                src/tui/app.cpp
+
+TUI_ENTRY_SRCS = src/tui/four_stage_entry.cpp \
+                 src/tui/six_stage_entry.cpp
+
+TUI_SRCS = $(TUI_CORE_SRCS) $(TUI_ENTRY_SRCS)
+TUI_OBJS = $(TUI_SRCS:.cpp=.o)
 
 all: simulator assembler
 
@@ -88,7 +104,7 @@ src/simulator/main.o: src/simulator/main.cpp src/simulator/engine_session.hpp $(
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Simulator executable
-simulator: $(COMMON_OBJS) $(SESSION_OBJS) $(MICRO_OBJS) src/simulator/four_stage_runner.o src/simulator/six_stage_runner.o src/simulator/main.o
+simulator: $(COMMON_OBJS) $(SESSION_OBJS) $(MICRO_OBJS) $(TUI_OBJS) src/simulator/four_stage_runner.o src/simulator/six_stage_runner.o src/simulator/main.o
 	$(CXX) $(CXXFLAGS) $^ -o simulator
 
 # Run unit tests
@@ -130,9 +146,21 @@ test: simulator
 	    -o /tmp/t_mc4 && /tmp/t_mc4 && rm /tmp/t_mc4
 	@echo "=== Running Basic Pipeline Integration Test ==="
 	@./simulator tests/test_basic.s
+	@echo "=== Running TUI Debugger Tests ==="
+	@$(MAKE) --no-print-directory test-tui
 	@echo "=== All Tests Passed Successfully! ==="
 
 clean:
-	rm -f $(COMMON_OBJS) $(SESSION_OBJS) $(MICRO_OBJS) src/simulator/four_stage_runner.o src/simulator/six_stage_runner.o src/simulator/main.o simulator assembler
+	rm -f $(COMMON_OBJS) $(SESSION_OBJS) $(MICRO_OBJS) $(TUI_OBJS) src/simulator/four_stage_runner.o src/simulator/six_stage_runner.o src/simulator/main.o simulator assembler
 
-.PHONY: all test clean
+# TUI unit tests: pure renderer/model tests, no terminal required.
+test-tui:
+	@echo "=== Running TUI Debugger Tests ==="
+	@$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	    tests/tui/test_tui.cpp \
+	    src/tui/screen.cpp src/tui/instruction_text.cpp \
+	    src/tui/debugger_model.cpp src/tui/renderer.cpp \
+	    src/debugger/debugger.cpp \
+	    -o /tmp/t_tui && /tmp/t_tui && rm /tmp/t_tui
+
+.PHONY: all test test-tui clean

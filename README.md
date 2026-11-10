@@ -56,6 +56,62 @@ make test                         # run the unit-test suites
 
 Requires a C++17 compiler. Windows equivalents of the build recipes are in the `*.bat` scripts.
 
+### Three ways to run a program
+
+| Mode | How to start | Behaviour |
+| :--- | :--- | :--- |
+| **Batch** | `./simulator prog.s` | Runs to completion, prints the pipeline comparison and statistics. |
+| **CLI debugger** | `./simulator --debug6 prog.s` | Line-oriented `debug>` prompt (`step`, `run`, `break`, `mem`, `stack`, ...). |
+| **TUI debugger** | `./simulator --tui6 prog.s` | Full-screen interactive debugger. `--tui4` selects the 4-stage pipeline, `--tui` defaults to 6-stage. |
+
+The batch and CLI-debugger modes behave exactly as before. The TUI can also be
+opened from the interactive prompt after loading a program:
+
+```text
+risc201> load tests/test_stress.s
+risc201> tui6          # or: tui4 / tui 4
+```
+
+### TUI debugger
+
+The screen is deliberately three bands rather than a mosaic of panels:
+
+```text
+header      model, cycle count, run state
+pipeline    one card per stage: stage name, current instruction, key value
+main        active view (registers by default) + always-on state side panel
+footer      status message / command line, then key hints
+```
+
+Keys:
+
+| Key | Action |
+| :--- | :--- |
+| `s` / `space` | step one clock |
+| `r` | run until a breakpoint or until the CPU stops |
+| `f` | run to completion (ignores breakpoints) |
+| `R` | reset and reload the program |
+| `m` / `k` / `y` / `t` / `b` / `g` / `h` | memory, stack, system registers, stats, breakpoints, registers, help |
+| `1`–`7` | same views by number; `Tab` cycles them |
+| `↑` / `↓` / `PgUp` / `PgDn` | scroll the memory window |
+| `:` | open a command line (full CLI-debugger command set) |
+| `q` / `Ctrl-C` | quit (or interrupt a run) |
+
+Commands accepted after `:` — `step [n]`, `run`, `finish`, `reset`,
+`break <addr>`, `delete <addr>`, `breaks`, `regs`, `mem [addr]`,
+`stack [n]`, `sysregs`, `stats`, `help`, `quit`.
+
+Notes:
+
+- Breakpoints are compared against the architectural PC, which this core keeps
+  in instruction-index units (the same value `debug4`/`debug6` print).
+- The memory and stack views read through L1 as well as main memory, so recent
+  stores are visible before their cache line is written back.
+- The TUI requires an interactive terminal; if stdin/stdout is redirected it
+  exits with a message and suggests `--debug4` / `--debug6`.
+- `make test` also runs `make test-tui`, the terminal-free tests for the TUI
+  renderer and model.
+
 ### Inspecting the two control units
 
 The interactive simulator can display the same pipeline through either control
