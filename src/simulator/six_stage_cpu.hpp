@@ -230,9 +230,8 @@ public:
     }
 
     bool readMemoryWord(uint32_t addr, uint32_t& val) const override {
-        auto it = mainMem.find(addr - (addr % BLOCK_SIZE));
-        if (it == mainMem.end()) { val = 0; return true; }
-        val = getWord(it->second, addr % BLOCK_SIZE);
+        // Cache-aware peek so debugger views see stores that are still in L1.
+        val = peekMemoryWord(addr);
         return true;
     }
 

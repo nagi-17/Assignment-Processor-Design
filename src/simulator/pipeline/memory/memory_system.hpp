@@ -44,7 +44,7 @@ const int MEM_LATENCY = 100;                        // cycles
 const int MAX_LOW_SETS = 512;
 const int MAX_LOW_WAYS = 8;
 
-static bool showTrace = true;  // set to false if you dont want the hit/miss messages
+inline bool showTrace = true;  // set to false if you dont want the hit/miss messages
 
 // ---------------- data ----------------
 
@@ -54,30 +54,30 @@ struct Block
 };
 
 // L1
-static bool l1Valid[L1_SETS][L1_ASSOC];
-static bool l1Dirty[L1_SETS][L1_ASSOC];
-static uint32_t l1Tag[L1_SETS][L1_ASSOC];
-static long long l1Used[L1_SETS][L1_ASSOC];   // last used time, for LRU
-static Block l1Data[L1_SETS][L1_ASSOC];
-static int l1Hits, l1Misses, l1Writebacks;
+inline bool l1Valid[L1_SETS][L1_ASSOC];
+inline bool l1Dirty[L1_SETS][L1_ASSOC];
+inline uint32_t l1Tag[L1_SETS][L1_ASSOC];
+inline long long l1Used[L1_SETS][L1_ASSOC];   // last used time, for LRU
+inline Block l1Data[L1_SETS][L1_ASSOC];
+inline int l1Hits, l1Misses, l1Writebacks;
 
-static uint32_t marReg;   // memory address register
-static uint32_t mdrReg;   // memory data register
+inline uint32_t marReg;   // memory address register
+inline uint32_t mdrReg;   // memory data register
 
 // lower caches: first index is the level (0 = L2, 1 = L3, 2 = L4)
 
-static bool lowValid[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
-static bool lowDirty[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
-static uint32_t lowTag[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
-static long long lowUsed[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
-static Block lowData[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
-static int lowHits[NUM_LOWER], lowMisses[NUM_LOWER], lowWritebacks[NUM_LOWER];
+inline bool lowValid[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
+inline bool lowDirty[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
+inline uint32_t lowTag[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
+inline long long lowUsed[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
+inline Block lowData[NUM_LOWER][MAX_LOW_SETS][MAX_LOW_WAYS];
+inline int lowHits[NUM_LOWER], lowMisses[NUM_LOWER], lowWritebacks[NUM_LOWER];
 
 // main memory: only the blocks that were written are stored, everything else reads as 0
-static std::map<uint32_t, Block> mainMem;
-static int memReads, memWrites;
+inline std::map<uint32_t, Block> mainMem;
+inline int memReads, memWrites;
 
-static long long useClock;   // goes up on every access, used for LRU
+inline long long useClock;   // goes up on every access, used for LRU
 
 // ---------------- small helpers ----------------
 
@@ -484,6 +484,23 @@ inline uint32_t memAccess(uint32_t addr, bool is_ld, bool is_st, uint32_t st_dat
     useClock++;
     l1Used[set][way] = useClock;
     return mdrReg;
+}
+
+// Debugger peek: returns the word visible at `addr` without touching LRU state.
+// L1 is consulted first because a recent store lives there until its line is
+// written back, so reading main memory alone would report stale zeros.
+inline uint32_t peekMemoryWord(uint32_t addr)
+{
+    bool wayMatch[L1_ASSOC];
+    l1LookupTags(addr, wayMatch);
+    const int way = matchedWay(wayMatch);
+    if (way != -1)
+        return getWord(l1Data[l1SetOf(addr)][way], l1OffsetOf(addr));
+
+    std::map<uint32_t, Block>::const_iterator it = mainMem.find(l1BlockAddr(addr));
+    if (it == mainMem.end())
+        return 0;
+    return getWord(it->second, l1OffsetOf(addr));
 }
 
 inline void printMemStats()

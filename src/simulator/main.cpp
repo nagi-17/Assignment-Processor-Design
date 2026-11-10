@@ -15,6 +15,7 @@
 
 #include "runner_interface.hpp"
 #include "engine_session.hpp"
+#include "entry.hpp"
 
 // Assembler components
 #include "../assembler/preprocessor.cpp"
@@ -54,6 +55,7 @@ void printHelp() {
               << "  run6                      Execute loaded program on 6-Stage Pipeline\n"
               << "  debug4                    Interactive step-by-step debugger (4-Stage)\n"
               << "  debug6                    Interactive step-by-step debugger (6-Stage)\n"
+              << "  tui4 / tui6               Full-screen TUI debugger (4-Stage / 6-Stage)\n"
               << "  compare                   Run on BOTH pipelines and compare cycle stats\n"
               << "  pipeline [4|6] [n|run|reset]\n"
               << "                            Show control-ROM pipeline latches + control ROM\n"
@@ -72,6 +74,7 @@ void printHelp() {
               << "  run6\n"
               << "  compare\n"
               << "  debug4\n"
+              << "  tui6\n"
               << "  pipeline 4 5\n"
               << "  micropipeline 6 all\n\n";
 }
@@ -304,6 +307,15 @@ int main(int argc, char* argv[]) {
         } else if (arg1 == "--debug6" || arg1 == "-d6") {
             mode = "debug6";
             if (argc >= 3) filename = argv[2];
+        } else if (arg1 == "--tui4" || arg1 == "-t4") {
+            mode = "tui4";
+            if (argc >= 3) filename = argv[2];
+        } else if (arg1 == "--tui6" || arg1 == "-t6") {
+            mode = "tui6";
+            if (argc >= 3) filename = argv[2];
+        } else if (arg1 == "--tui") {
+            mode = "tui6";
+            if (argc >= 3) filename = argv[2];
         } else {
             filename = arg1;
         }
@@ -329,6 +341,15 @@ int main(int argc, char* argv[]) {
                 return 0;
             } else if (mode == "debug6") {
                 runSixStage(loaded_binary, true);
+                return 0;
+            } else if (mode == "tui4" || mode == "tui6") {
+                const bool opened = (mode == "tui4") ? runTuiFourStage(loaded_binary)
+                                                     : runTuiSixStage(loaded_binary);
+                if (!opened) {
+                    std::cerr << "TUI needs an interactive terminal; "
+                                 "use --debug4/--debug6 instead.\n";
+                    return 1;
+                }
                 return 0;
             } else {
                 PipelineStats s4 = runFourStage(loaded_binary, false);
@@ -425,6 +446,22 @@ int main(int argc, char* argv[]) {
                 continue;
             }
             runSixStage(loaded_binary, true);
+        } else if (cmd == "tui4" || cmd == "tui6" || cmd == "tui") {
+            if (loaded_binary.empty()) {
+                std::cout << "No program loaded. Use 'load <file.s>' first.\n";
+                continue;
+            }
+            bool four = (cmd == "tui4");
+            if (cmd == "tui") {
+                std::string width;
+                if (iss >> width && width == "4") four = true;
+            }
+            const bool opened = four ? runTuiFourStage(loaded_binary)
+                                     : runTuiSixStage(loaded_binary);
+            if (!opened) {
+                std::cout << "TUI needs an interactive terminal; "
+                             "use debug4 / debug6 instead.\n";
+            }
         } else if (cmd == "compare") {
             if (loaded_binary.empty()) {
                 std::cout << "No program loaded. Use 'load <file.s>' first.\n";

@@ -122,6 +122,7 @@ void appendSixStagePipeline(DebuggerSnapshot& snapshot, const IFID& ifid,
 
     snapshot.pipeline.push_back({"EX/MA1", exma1.is_valid, {
         field("EXRESULT", exma1.exResult), field("ST_DATA", exma1.st_data),
+        field("PC_NEXT", addressValue(exma1.pc_next, pcScale)),
         field("RD", exma1.rd, DebugValueFormat::Decimal),
         flag("IS_LD", exma1.is_Ld), flag("IS_ST", exma1.is_St),
         flag("IS_WB", exma1.is_Wb), flag("IS_CLEAR", exma1.is_Clear),
@@ -132,6 +133,7 @@ void appendSixStagePipeline(DebuggerSnapshot& snapshot, const IFID& ifid,
 
     snapshot.pipeline.push_back({"MA1/MA2", ma1ma2.is_valid, {
         field("EXRESULT", ma1ma2.exResult), field("ST_DATA", ma1ma2.st_data),
+        field("PC_NEXT", addressValue(ma1ma2.pc_next, pcScale)),
         field("RD", ma1ma2.rd, DebugValueFormat::Decimal),
         flag("IS_LD", ma1ma2.is_Ld), flag("IS_ST", ma1ma2.is_St),
         flag("IS_WB", ma1ma2.is_Wb), flag("IS_CLEAR", ma1ma2.is_Clear),
@@ -142,6 +144,7 @@ void appendSixStagePipeline(DebuggerSnapshot& snapshot, const IFID& ifid,
 
     snapshot.pipeline.push_back({"MA2/WB", ma2wb.is_valid, {
         field("EXRESULT", ma2wb.exResult), field("READ_DATA", ma2wb.read_data),
+        field("PC_NEXT", addressValue(ma2wb.pc_next, pcScale)),
         field("RD", ma2wb.rd, DebugValueFormat::Decimal),
         flag("IS_LD", ma2wb.is_Ld), flag("IS_WB", ma2wb.is_Wb),
         flag("IS_CLEAR", ma2wb.is_Clear)
