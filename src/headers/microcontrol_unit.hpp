@@ -130,6 +130,11 @@ public:
     // Number of entries in the control store.
     std::size_t size() const { return controlStore.size(); }
 
+    // Read-only view of the control ROM, for debugger / CLI listings.
+    const std::unordered_map<std::string, ControlWord>& entries() const {
+        return controlStore;
+    }
+
     // Decodes a 32-character binary instruction string into its control word.
     // Returns false for an illegal opcode or a malformed string.
     bool decodeInstruction(const std::string& instruction, ControlWord& outWord) const {

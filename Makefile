@@ -13,6 +13,7 @@ INCLUDES = -I src/headers \
            -I src/simulator/pipeline/fpu \
            -I src/simulator/pipeline/execute \
            -I src/simulator \
+           -I src/microcontrol \
            -I src/assembler
 
 # Common pipeline & unit sources
@@ -30,6 +31,22 @@ COMMON_SRCS = src/simulator/pipeline/instruction_fetch/instruction_fetch.cpp \
               src/debugger/debugger_cli.cpp
 
 COMMON_OBJS = $(COMMON_SRCS:.cpp=.o)
+
+# Microprogrammed-control-unit model, linked into the main simulator so its
+# pipeline view is available from the risc201> prompt.  Reuses COMMON_OBJS for
+# the ALU/FPU/control-status symbols; microcontrol_main.cpp is deliberately
+# excluded because it defines its own main().
+MICRO_SRCS = src/microcontrol/microprogram_store.cpp \
+             src/microcontrol/microprogrammed_cpu.cpp \
+             src/microcontrol/micro_session.cpp
+
+MICRO_OBJS = $(MICRO_SRCS:.cpp=.o)
+
+# EngineSession adapters for the control-ROM pipeline.
+SESSION_SRCS = src/simulator/four_stage_session.cpp \
+               src/simulator/six_stage_session.cpp
+
+SESSION_OBJS = $(SESSION_SRCS:.cpp=.o)
 
 all: simulator assembler
 
@@ -49,14 +66,29 @@ src/simulator/four_stage_runner.o: src/simulator/four_stage_runner.cpp src/simul
 src/simulator/six_stage_runner.o: src/simulator/six_stage_runner.cpp src/simulator/six_stage_cpu.hpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/simulator/six_stage_runner.cpp -o src/simulator/six_stage_runner.o
 
-src/simulator/main.o: src/simulator/main.cpp $(ASSEMBLER_SRCS)
+src/simulator/four_stage_session.o: src/simulator/four_stage_session.cpp \
+        src/simulator/four_stage_cpu.hpp src/simulator/engine_session.hpp \
+        src/simulator/control_rom_view.hpp src/simulator/control_rom_session_impl.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -DFOUR_STAGE_PIPELINE -c src/simulator/four_stage_session.cpp -o src/simulator/four_stage_session.o
+
+src/simulator/six_stage_session.o: src/simulator/six_stage_session.cpp \
+        src/simulator/six_stage_cpu.hpp src/simulator/engine_session.hpp \
+        src/simulator/control_rom_view.hpp src/simulator/control_rom_session_impl.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/simulator/six_stage_session.cpp -o src/simulator/six_stage_session.o
+
+src/microcontrol/micro_session.o: src/microcontrol/micro_session.cpp \
+        src/microcontrol/microprogrammed_cpu.hpp src/simulator/engine_session.hpp \
+        src/simulator/control_rom_view.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/microcontrol/micro_session.cpp -o src/microcontrol/micro_session.o
+
+src/simulator/main.o: src/simulator/main.cpp src/simulator/engine_session.hpp $(ASSEMBLER_SRCS)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/simulator/main.cpp -o src/simulator/main.o
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Simulator executable
-simulator: $(COMMON_OBJS) src/simulator/four_stage_runner.o src/simulator/six_stage_runner.o src/simulator/main.o
+simulator: $(COMMON_OBJS) $(SESSION_OBJS) $(MICRO_OBJS) src/simulator/four_stage_runner.o src/simulator/six_stage_runner.o src/simulator/main.o
 	$(CXX) $(CXXFLAGS) $^ -o simulator
 
 # Run unit tests
@@ -101,6 +133,6 @@ test: simulator
 	@echo "=== All Tests Passed Successfully! ==="
 
 clean:
-	rm -f $(COMMON_OBJS) src/simulator/four_stage_runner.o src/simulator/six_stage_runner.o src/simulator/main.o simulator assembler
+	rm -f $(COMMON_OBJS) $(SESSION_OBJS) $(MICRO_OBJS) src/simulator/four_stage_runner.o src/simulator/six_stage_runner.o src/simulator/main.o simulator assembler
 
 .PHONY: all test clean

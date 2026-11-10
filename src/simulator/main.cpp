@@ -14,6 +14,7 @@
 #include <algorithm>
 
 #include "runner_interface.hpp"
+#include "engine_session.hpp"
 
 // Assembler components
 #include "../assembler/preprocessor.cpp"
@@ -21,6 +22,19 @@
 #include "../assembler/bin_generator.cpp"
 
 namespace {
+
+bool parseCycleCount(const std::string& text, uint64_t& value) {
+    if (text.empty()) return false;
+    for (char c : text) {
+        if (c < '0' || c > '9') return false;
+    }
+    try {
+        value = std::stoull(text);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
 
 void printBanner() {
     std::cout << "\n"
@@ -41,6 +55,13 @@ void printHelp() {
               << "  debug4                    Interactive step-by-step debugger (4-Stage)\n"
               << "  debug6                    Interactive step-by-step debugger (6-Stage)\n"
               << "  compare                   Run on BOTH pipelines and compare cycle stats\n"
+              << "  pipeline [4|6] [n|run|reset]\n"
+              << "                            Show control-ROM pipeline latches + control ROM\n"
+              << "  micropipeline [4|6] [n|run|reset|all]\n"
+              << "                            Show microprogrammed-CU pipeline + microprograms\n"
+              << "                              n   advance that many clocks first\n"
+              << "                              run advance to completion, reset restart\n"
+              << "                              all dump the whole microprogram store\n"
               << "  program                   Display currently loaded binary instructions\n"
               << "  stats                     Display stats from the most recent run\n"
               << "  help                      Display this help menu\n"
@@ -50,7 +71,9 @@ void printHelp() {
               << "  run4\n"
               << "  run6\n"
               << "  compare\n"
-              << "  debug4\n\n";
+              << "  debug4\n"
+              << "  pipeline 4 5\n"
+              << "  micropipeline 6 all\n\n";
 }
 
 bool assembleSource(const std::string& inputPath,
@@ -256,6 +279,7 @@ int main(int argc, char* argv[]) {
     std::string current_file;
     PipelineStats last_stats{};
     bool has_last_stats = false;
+    SessionManager sessions;
 
     // Check command line arguments for batch / direct mode
     if (argc >= 2) {
@@ -344,6 +368,7 @@ int main(int argc, char* argv[]) {
             } else {
                 loaded_binary = bin;
                 current_file = path;
+                sessions.invalidate();
                 std::cout << "Successfully loaded " << loaded_binary.size()
                           << " instructions from '" << path << "'.\n";
             }
@@ -410,6 +435,57 @@ int main(int argc, char* argv[]) {
             std::cout << "Running on 6-stage pipeline...\n";
             PipelineStats s6 = runSixStage(loaded_binary, false);
             printComparison(s4, s6);
+        } else if (cmd == "pipeline" || cmd == "micropipeline") {
+            if (loaded_binary.empty()) {
+                std::cout << "No program loaded. Use 'load <file.s>' first.\n";
+                continue;
+            }
+
+            const bool micro = (cmd == "micropipeline");
+            bool four = micro ? sessions.microIsFour() : sessions.romIsFour();
+            uint64_t cycles = 0;
+            bool do_run = false;
+            bool do_reset = false;
+            bool full_listing = false;
+            bool bad_option = false;
+            bool width_taken = false;
+
+            std::string token;
+            while (iss >> token) {
+                if (!width_taken && token == "4") {
+                    four = true;
+                    width_taken = true;
+                } else if (!width_taken && token == "6") {
+                    four = false;
+                    width_taken = true;
+                } else if (token == "run") {
+                    do_run = true;
+                } else if (token == "reset") {
+                    do_reset = true;
+                } else if (token == "all") {
+                    full_listing = true;
+                } else if (!parseCycleCount(token, cycles)) {
+                    std::cout << "Unknown option '" << token
+                              << "'. Use 4|6, a cycle count, run, reset, or all.\n";
+                    bad_option = true;
+                    break;
+                }
+            }
+            if (bad_option) continue;
+
+            EngineSession& session = micro
+                ? sessions.micro(four, loaded_binary)
+                : sessions.controlRom(four, loaded_binary);
+
+            if (do_reset) session.reset();
+            if (do_run) {
+                session.run();
+            } else {
+                for (uint64_t i = 0; i < cycles; ++i) {
+                    if (!session.step()) break;
+                }
+            }
+            session.printView(std::cout, full_listing);
         } else if (cmd == "program" || cmd == "listing") {
             if (loaded_binary.empty()) {
                 std::cout << "No program loaded.\n";
