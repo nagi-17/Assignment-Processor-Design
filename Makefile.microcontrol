@@ -1,0 +1,48 @@
+# Makefile for the standalone RISC201 microcontrol model.
+# This does not touch the production simulator build; run it explicitly:
+#   make -f Makefile.microcontrol
+#   make -f Makefile.microcontrol test
+
+CXX      ?= g++
+CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wno-unused-parameter -O2
+
+INCLUDES = -I src/headers \
+           -I src/microcontrol \
+           -I src/simulator/pipeline/alu \
+           -I src/simulator/pipeline/fpu \
+           -I src/simulator/pipeline/memory \
+           -I src/simulator/pipeline/control_status_unit
+
+MC_SRCS = src/microcontrol/microprogram_store.cpp \
+          src/microcontrol/microprogrammed_cpu.cpp \
+          src/simulator/pipeline/alu/alu_add_sub.cpp \
+          src/simulator/pipeline/alu/alu_bitwise.cpp \
+          src/simulator/pipeline/alu/alu_mul_div.cpp \
+          src/simulator/pipeline/fpu/fpu_helpers.cpp \
+          src/simulator/pipeline/fpu/fpu_addsub.cpp \
+          src/simulator/pipeline/fpu/fpu_muldiv.cpp \
+          src/simulator/pipeline/fpu/fpu_cmp.cpp \
+          src/simulator/pipeline/control_status_unit/control_status_unit.cpp
+
+MC_OBJS = $(MC_SRCS:.cpp=.mc.o)
+
+all: microcontrol_simulator
+
+microcontrol_simulator: $(MC_OBJS) src/microcontrol/microcontrol_main.mc.o
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+%.mc.o: %.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+test: microcontrol_simulator microcontrol_tests
+	./microcontrol_tests
+
+microcontrol_tests: $(MC_OBJS) tests/microcontrol/test_microcontrol.mc.o
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+clean:
+	rm -f $(MC_OBJS) src/microcontrol/microcontrol_main.mc.o \
+	      tests/microcontrol/test_microcontrol.mc.o \
+	      microcontrol_simulator microcontrol_tests
+
+.PHONY: all test clean

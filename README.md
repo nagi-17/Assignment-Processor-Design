@@ -56,6 +56,26 @@ make test                         # run the unit-test suites
 
 Requires a C++17 compiler. Windows equivalents of the build recipes are in the `*.bat` scripts.
 
+### Inspecting the two control units
+
+The interactive simulator can display the same pipeline through either control
+unit. Both commands accept an optional width (`4`/`6`), a cycle count to advance
+first, `run` to advance to completion, and `reset` to restart; `micropipeline`
+also accepts `all` to dump the whole microprogram store.
+
+```text
+risc201> load tests/test_basic.s
+risc201> pipeline 4 5         # control-ROM latches + control signals + ROM listing
+risc201> micropipeline 4 5    # μCEU latches + microPC/MIR/bus + microprograms
+risc201> pipeline 6 4         # same views on the 6-stage pipeline
+risc201> micropipeline 6 all  # full microprogram store
+```
+
+`pipeline` replays the production `FourStageCPU`/`SixStageCPU`, so its latch
+behaviour matches `debug4`/`debug6`. `micropipeline` drives the separate
+`mc::MicroprogrammedCPU` model from `src/microcontrol/`, whose per-latch
+microcontrol execution units expose `microPC`, `MIR` and shared-bus state.
+
 ## Report
 
 The full design rationale, hazard analysis, test results and cycle-level measurements are in
